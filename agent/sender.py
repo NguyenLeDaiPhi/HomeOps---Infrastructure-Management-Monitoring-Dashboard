@@ -3,12 +3,12 @@ import socket
 import time
 import struct
 
-from monitor_metrics.cpu_display import cpu_stats
-from monitor_metrics.ram_display import ram_stats
-from monitor_metrics.disk_display import disk_stats
+from collector.cpu import cpu_stats
+from collector.ram import ram_stats
+from collector.disk import disk_stats
+from collector.network import network_stats
 
-from snapshot.network_snapshot import network_stats
-from monitor_metrics.network_display import NetworkMonitor
+from monitor.network_monitor import NetworkMonitor
 
 WINDOWS_IP = "192.168.2.1"
 PORT = 5003

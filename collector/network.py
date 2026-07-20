@@ -1,6 +1,4 @@
 import psutil 
-import socket 
-import json
 
 def network_stats(): 
     interfaces = {}

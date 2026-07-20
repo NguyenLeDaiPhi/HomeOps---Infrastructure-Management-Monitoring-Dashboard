@@ -1,4 +1,4 @@
-from snapshot.network_snapshot import network_stats
+from collector.network import network_stats
 
 class NetworkMonitor:
     def __init__(self):
