@@ -64,7 +64,7 @@ def handle_payload(payload, addr):
     #
     
     elif message_type == "PROCESS_EVENT":
-        print("\nNETWORK EVENTS")
+        print("\nPROCESS EVENTS")
         print(json.dumps(payload["events"]))
 
         print("\nUPDATED PROCESS SNAPSHOT")
@@ -81,11 +81,9 @@ def start_receiver():
 
     try:
         client, addr = server.accept()
+        print(f"\nConnected: {addr[0]}:{addr[1]}")
+        buffer = ""
         while True:
-            print(f"\nConnected: {addr[0]}:{addr[1]}")
-
-            buffer = ""
-
             try:
                 while True:
                     
