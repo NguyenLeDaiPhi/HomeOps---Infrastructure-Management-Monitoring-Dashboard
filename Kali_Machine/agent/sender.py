@@ -130,10 +130,10 @@ def send_data():
             #
             # Only send if something changed.
             #
-            if network_events & process_events:
-
+            if network_events: 
                 send_network_update(sock, network_events)
 
+            if process_events:
                 send_network_update(sock, process_events)
 
             time.sleep(5)
