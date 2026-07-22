@@ -59,6 +59,17 @@ def handle_payload(payload, addr):
         print("\nUPDATED NETWORK SNAPSHOT")
         print(json.dumps(payload["network"], indent=4))
 
+    #
+    # PROCESS UPDATE
+    #
+    
+    elif message_type == "PROCESS_EVENT":
+        print("\nNETWORK EVENTS")
+        print(json.dumps(payload["events"]))
+
+        print("\nUPDATED PROCESS SNAPSHOT")
+        print(json.dumps(payload["process"], indent=4))
+
     else:
         print("Unknow message type.")
     

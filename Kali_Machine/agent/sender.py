@@ -7,8 +7,10 @@ from collector.cpu import cpu_stats
 from collector.ram import ram_stats
 from collector.disk import disk_stats
 from collector.network import network_stats
+from collector.process import process_snapshot
 
 from monitor.network_monitor import NetworkMonitor
+from monitor.process_monitor import ProcessMonitor
 
 WINDOWS_IP = "192.168.2.1"
 PORT = 5003
@@ -44,7 +46,9 @@ def send_initial_snapshot(sock):
         "hostname": socket.gethostname(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
 
-        "network": network_stats()
+        "network": network_stats(),
+        "process": process_snapshot()
+        
     }
 
     send_json(sock, payload)
@@ -69,6 +73,22 @@ def send_network_update(sock, events):
 
     print("[+] Network update sent")
 
+def send_process_update(sock, events):
+
+    payload = {
+        "type": "PROCESS_EVENT",
+        "hostname": socket.gethostname(),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+
+        "events": events, 
+
+        "process": process_snapshot()
+    }
+
+    send_json(sock, payload)
+
+    print("[+] Process update sent")
+
 
 def send_data():
 
@@ -86,8 +106,9 @@ def send_data():
         # Create ONE monitor.
         # It remembers the previous snapshot.
         #
-        monitor = NetworkMonitor()
-
+        network_monitor = NetworkMonitor()
+        process_monitor = ProcessMonitor()
+        
         #
         # Send only once.
         #
@@ -103,14 +124,17 @@ def send_data():
             #
             # Detect changes
             #
-            events = monitor.check_changes()
+            network_events = network_monitor.check_changes()  
+            process_events = process_monitor.check_changes()
 
             #
             # Only send if something changed.
             #
-            if events:
+            if network_events & process_events:
 
-                send_network_update(sock, events)
+                send_network_update(sock, network_events)
+
+                send_network_update(sock, process_events)
 
             time.sleep(5)
 

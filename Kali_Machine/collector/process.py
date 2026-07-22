@@ -1,4 +1,5 @@
 import psutil 
+import json
 
 def process_snapshot():
     snapshot = {}
