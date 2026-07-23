@@ -23,8 +23,7 @@ def send_json(sock, payload):
     message = json.dumps(payload).encode('utf-8')
     message_length = len(message)
     header = struct.pack("!I", message_length)
-    sock.sendall(header)
-    sock.sendall(message)
+    sock.sendall(header + message)
 
 def send_hardware_metrics(sock):
     payload = {
@@ -39,22 +38,35 @@ def send_hardware_metrics(sock):
     send_json(sock, payload)
     print("[+] Hardware metrics sent")
 
-def send_initial_snapshot(sock):
+def send_initial_snapshot_network(sock):
     
     payload = {
-        "type": "INITIAL_SNAPSHOT",
+        "type": "INITIAL_NETWORK_SNAPSHOT",
         "hostname": socket.gethostname(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
 
-        "network": network_stats(),
+        "network": network_stats()
+        
+    }
+
+    send_json(sock, payload)
+
+    print("[+] Initial network snapshot sent")
+
+def send_initial_snapshot_process(sock):
+    
+    payload = {
+        "type": "INITIAL_PROCESS_SNAPSHOT",
+        "hostname": socket.gethostname(),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+
         "process": process_snapshot()
         
     }
 
     send_json(sock, payload)
 
-    print("[+] Initial snapshot sent")
-
+    print("[+] Initial process snapshot sent")
 
 def send_network_update(sock, events):
 
@@ -63,7 +75,7 @@ def send_network_update(sock, events):
         "hostname": socket.gethostname(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
 
-        "events": events,
+        "events_network": events,
 
         # New snapshot after the change    
         "network": network_stats()
@@ -80,7 +92,7 @@ def send_process_update(sock, events):
         "hostname": socket.gethostname(),
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
 
-        "events": events, 
+        "events_process": events, 
 
         "process": process_snapshot()
     }
@@ -112,7 +124,9 @@ def send_data():
         #
         # Send only once.
         #
-        send_initial_snapshot(sock)
+        send_initial_snapshot_network(sock)
+
+        send_initial_snapshot_process(sock)
 
         while True:
 
@@ -134,7 +148,7 @@ def send_data():
                 send_network_update(sock, network_events)
 
             if process_events:
-                send_network_update(sock, process_events)
+                send_process_update(sock, process_events)
 
             time.sleep(5)
 
