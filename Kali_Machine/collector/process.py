@@ -1,7 +1,10 @@
 import psutil 
-import json
+from typing import Dict, Any
 
-def process_snapshot():
+def process_snapshot() -> Dict[int, Dict[str, Any]]:
+    """
+    Captures a snapshot of currently running processes with their metadata.
+    """
     snapshot = {}
     data_process = psutil.process_iter(attrs=[
         "pid",
@@ -15,8 +18,15 @@ def process_snapshot():
 
     for proc in data_process:
         try:
-            snapshot[proc.info['pid']] = proc.info
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            info = proc.info
+            # Round numeric percentages for clean reporting
+            if info.get('cpu_percent') is not None:
+                info['cpu_percent'] = round(info['cpu_percent'], 1)
+            if info.get('memory_percent') is not None:
+                info['memory_percent'] = round(info['memory_percent'], 1)
+
+            snapshot[info['pid']] = info
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
     
     return snapshot

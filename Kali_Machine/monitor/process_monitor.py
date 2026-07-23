@@ -1,101 +1,94 @@
+from typing import List, Dict, Any
 from collector.process import process_snapshot
-import json
+from config import KaliConfig
 
 class ProcessMonitor:
-
+    """
+    Monitors process events (started, stopped, status/user/name changes, high CPU/Memory resource usage).
+    """
     def __init__(self):
-        self.previous_process = process_snapshot()
+        self.previous_process: Dict[int, Dict[str, Any]] = process_snapshot()
         
-    # Compare previous process snapshot and current snapshot with PID 
-    def check_changes(self):
-        # Add dictionary
-        events = []
-
-        # add current snapshot
+    def check_changes(self) -> List[Dict[str, Any]]:
+        events: List[Dict[str, Any]] = []
         current_process = process_snapshot()
 
-        # Create current & previous process set key
-        current_process_key = set(current_process.keys())
-        # previous_process_key = set(self.previous_snapshot.keys())
-        previous_process_key = set(self.previous_process.keys())
+        current_pids = set(current_process.keys())
+        previous_pids = set(self.previous_process.keys())
         
-        # Create variable to compare previous and current
-        started = current_process_key - previous_process_key
-        stopped = previous_process_key - current_process_key
+        started_pids = current_pids - previous_pids
+        stopped_pids = previous_pids - current_pids
 
-        # Inital a loop to compare previous and current
-        for proc_pid in started:
+        # Process Started Events
+        for pid in started_pids:
+            proc_info = current_process[pid]
             events.append({
-                "events": "PROCESS_STARTED",
-                "PID": proc_pid,
-                "name": current_process[proc_pid]["name"]
+                "event": "PROCESS_STARTED",
+                "pid": pid,
+                "name": proc_info.get("name", "Unknown"),
+                "username": proc_info.get("username", "N/A")
             })
         
-        # Compare if any processes removed or stopped
-        for proc_pid in stopped:
+        # Process Stopped Events
+        for pid in stopped_pids:
+            proc_info = self.previous_process[pid]
             events.append({
-                "events": "PROCESS_STOPPED",
-                "pid": proc_pid, 
-                "name": self.previous_process[proc_pid]["name"]
+                "event": "PROCESS_STOPPED",
+                "pid": pid, 
+                "name": proc_info.get("name", "Unknown"),
+                "username": proc_info.get("username", "N/A")
             })
 
-
-        # Initial process fields and threshold to compare the stats and recognize stats of CPU, MEMORY
+        # Process Metadata Fields to Compare
         PROCESS_FIELDS = {
             "status": "STATUS_CHANGED", 
             "username": "OWNER_CHANGED",
             "name": "NAME_CHANGED"
         }
 
-        CPU_THRESHOLD = 20
+        common_pids = current_pids & previous_pids
 
-        MEM_THRESHOLD = 5
+        for pid in common_pids:
+            current = current_process[pid]
+            previous = self.previous_process[pid]
 
-        common_process = current_process_key & previous_process_key
-
-        # Loop to check all of processes running based on process id 
-        for proc_pid in common_process:
-            current = current_process[proc_pid]
-            previous = self.previous_process[proc_pid]
-
+            # Field attribute change checks
             for field, event_name in PROCESS_FIELDS.items():
-                if current[field] != previous[field]:
+                if current.get(field) != previous.get(field):
                     events.append({
                         "event": event_name, 
-                        "pid": proc_pid, 
-                        "name": current["name"],
-                        "old": previous[field],
-                        "new": current[field]
+                        "pid": pid, 
+                        "name": current.get("name"),
+                        "old": previous.get(field),
+                        "new": current.get(field)
                     })
 
-                if abs(current["cpu_percent"] - previous["cpu_percent"]) >= CPU_THRESHOLD:
-                    events.append({
-                        "alert": "HIGH_CPU",
-                        "event": event_name, 
-                        "pid": proc_pid, 
-                        "name": current["name"], 
-                        "cpu": current["cpu_percent"]
-                    })
-                
-                if abs(current["memory_percent"] - previous["memory_percent"]) >= MEM_THRESHOLD:
-                    events.append({
-                        "alert": "HIGH_MEMORY",
-                        "event": event_name, 
-                        "pid": proc_pid, 
-                        "name": current["name"], 
-                        "cpu": current["memory_percent"]
-                    })
+            # High Resource Consumption Checks (evaluated ONCE per process)
+            curr_cpu = current.get("cpu_percent") or 0.0
+            prev_cpu = previous.get("cpu_percent") or 0.0
+            if abs(curr_cpu - prev_cpu) >= KaliConfig.CPU_THRESHOLD or curr_cpu >= 80.0:
+                events.append({
+                    "event": "HIGH_CPU",
+                    "pid": pid, 
+                    "name": current.get("name"), 
+                    "cpu": curr_cpu
+                })
+
+            curr_mem = current.get("memory_percent") or 0.0
+            prev_mem = previous.get("memory_percent") or 0.0
+            if abs(curr_mem - prev_mem) >= KaliConfig.MEM_THRESHOLD or curr_mem >= 50.0:
+                events.append({
+                    "event": "HIGH_MEMORY",
+                    "pid": pid, 
+                    "name": current.get("name"), 
+                    "memory": curr_mem
+                })
 
         self.previous_process = current_process
-
         return events
 
 if __name__ == "__main__":
+    import json
     monitor = ProcessMonitor()
-
     process_data = monitor.check_changes()
-
     print(json.dumps(process_data, indent=4))
-            
-            
-        
