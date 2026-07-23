@@ -1,174 +1,128 @@
+import os
+import sys
 import json
 import socket
 import time
 import struct
+import logging
 
+# Ensure project root is in sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config import KaliConfig
 from collector.cpu import cpu_stats
 from collector.ram import ram_stats
 from collector.disk import disk_stats
 from collector.network import network_stats
 from collector.process import process_snapshot
-
 from monitor.network_monitor import NetworkMonitor
 from monitor.process_monitor import ProcessMonitor
 
-WINDOWS_IP = "192.168.2.1"
-PORT = 5003
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("KaliSenderAgent")
 
-def send_json(sock, payload):
+def send_framed_json(sock: socket.socket, payload: dict) -> None:
     """
-    Send one JSON message terminated by a newline.
-    This solves TCP message framing.
+    Encodes JSON payload and sends it over TCP socket preceded by a 4-byte big-endian length header.
     """
-    message = json.dumps(payload).encode('utf-8')
-    message_length = len(message)
-    header = struct.pack("!I", message_length)
-    sock.sendall(header + message)
+    message_bytes = json.dumps(payload).encode('utf-8')
+    header = struct.pack("!I", len(message_bytes))
+    sock.sendall(header + message_bytes)
 
-def send_hardware_metrics(sock):
-    payload = {
-        "type": "HARDWARE_METRICS",
+def get_base_payload(message_type: str) -> dict:
+    return {
+        "type": message_type,
         "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
 
-        "cpu": cpu_stats(), 
-        "ram": ram_stats(), 
+def send_hardware_metrics(sock: socket.socket) -> None:
+    payload = get_base_payload("HARDWARE_METRICS")
+    payload.update({
+        "cpu": cpu_stats(),
+        "ram": ram_stats(),
         "disk": disk_stats()
-    }
-    send_json(sock, payload)
-    print("[+] Hardware metrics sent")
+    })
+    send_framed_json(sock, payload)
+    logger.info("Hardware metrics transmitted")
 
-def send_initial_snapshot_network(sock):
-    
-    payload = {
-        "type": "INITIAL_NETWORK_SNAPSHOT",
-        "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+def send_initial_network_snapshot(sock: socket.socket) -> None:
+    payload = get_base_payload("INITIAL_NETWORK_SNAPSHOT")
+    payload["network"] = network_stats()
+    send_framed_json(sock, payload)
+    logger.info("Initial network snapshot transmitted")
 
-        "network": network_stats()
-        
-    }
+def send_initial_process_snapshot(sock: socket.socket) -> None:
+    payload = get_base_payload("INITIAL_PROCESS_SNAPSHOT")
+    payload["process"] = process_snapshot()
+    send_framed_json(sock, payload)
+    logger.info("Initial process snapshot transmitted")
 
-    send_json(sock, payload)
+def send_network_update(sock: socket.socket, events: list) -> None:
+    payload = get_base_payload("NETWORK_EVENT")
+    payload["events_network"] = events
+    payload["network"] = network_stats()
+    send_framed_json(sock, payload)
+    logger.info(f"Network events update transmitted ({len(events)} events)")
 
-    print("[+] Initial network snapshot sent")
+def send_process_update(sock: socket.socket, events: list) -> None:
+    payload = get_base_payload("PROCESS_EVENT")
+    payload["events_process"] = events
+    payload["process"] = process_snapshot()
+    send_framed_json(sock, payload)
+    logger.info(f"Process events update transmitted ({len(events)} events)")
 
-def send_initial_snapshot_process(sock):
-    
-    payload = {
-        "type": "INITIAL_PROCESS_SNAPSHOT",
-        "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+def run_agent():
+    logger.info(f"Starting Kali Telemetry Agent -> Target Windows Host {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}")
 
-        "process": process_snapshot()
-        
-    }
+    while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(10.0)
 
-    send_json(sock, payload)
+        try:
+            logger.info(f"Attempting TCP connection to {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}...")
+            sock.connect((KaliConfig.WINDOWS_IP, KaliConfig.PORT))
+            sock.settimeout(None) # Reset to blocking mode once connected
+            logger.info("Successfully connected to Windows monitoring host!")
 
-    print("[+] Initial process snapshot sent")
+            # Instantiate change monitors
+            network_monitor = NetworkMonitor()
+            process_monitor = ProcessMonitor()
 
-def send_network_update(sock, events):
+            # Transmit initial telemetry snapshots
+            send_initial_network_snapshot(sock)
+            send_initial_process_snapshot(sock)
 
-    payload = {
-        "type": "NETWORK_EVENT",
-        "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            while True:
+                send_hardware_metrics(sock)
 
-        "events_network": events,
+                # Check for dynamic state changes
+                net_events = network_monitor.check_changes()
+                if net_events:
+                    send_network_update(sock, net_events)
 
-        # New snapshot after the change    
-        "network": network_stats()
-    }
+                proc_events = process_monitor.check_changes()
+                if proc_events:
+                    send_process_update(sock, proc_events)
 
-    send_json(sock, payload)
+                time.sleep(KaliConfig.METRIC_INTERVAL)
 
-    print("[+] Network update sent")
-
-def send_process_update(sock, events):
-
-    payload = {
-        "type": "PROCESS_EVENT",
-        "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-
-        "events_process": events, 
-
-        "process": process_snapshot()
-    }
-
-    send_json(sock, payload)
-
-    print("[+] Process update sent")
-
-
-def send_data():
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    print(f"Connecting to {WINDOWS_IP}:{PORT}...")
-
-    try:
-
-        sock.connect((WINDOWS_IP, PORT))
-
-        print("[+] Connected.")
-
-        #
-        # Create ONE monitor.
-        # It remembers the previous snapshot.
-        #
-        network_monitor = NetworkMonitor()
-        process_monitor = ProcessMonitor()
-        
-        #
-        # Send only once.
-        #
-        send_initial_snapshot_network(sock)
-
-        send_initial_snapshot_process(sock)
-
-        while True:
-
-            #
-            # Send metrics every 5 seconds
-            #
-            send_hardware_metrics(sock)
-
-            #
-            # Detect changes
-            #
-            network_events = network_monitor.check_changes()  
-            process_events = process_monitor.check_changes()
-
-            #
-            # Only send if something changed.
-            #
-            if network_events: 
-                send_network_update(sock, network_events)
-
-            if process_events:
-                send_process_update(sock, process_events)
-
-            time.sleep(5)
-
-    except ConnectionRefusedError:
-
-        print("Connection refused.")
-
-    except BrokenPipeError:
-
-        print("Windows server disconnected.")
-
-    except KeyboardInterrupt:
-
-        print("Sender stopped.")
-
-    finally:
-
-        sock.close()
-
+        except (ConnectionRefusedError, socket.timeout):
+            logger.warning(f"Connection refused by target {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}. Retrying in {KaliConfig.RECONNECT_DELAY}s...")
+        except (BrokenPipeError, ConnectionResetError):
+            logger.warning("Connection lost to Windows host. Reconnecting...")
+        except KeyboardInterrupt:
+            logger.info("Agent stopped by user signal.")
+            break
+        except Exception as e:
+            logger.error(f"Unexpected error in agent execution loop: {e}", exc_info=True)
+        finally:
+            sock.close()
+            time.sleep(KaliConfig.RECONNECT_DELAY)
 
 if __name__ == "__main__":
-
-    send_data()
+    run_agent()
