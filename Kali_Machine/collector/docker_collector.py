@@ -4,7 +4,6 @@ Runs locally on Kali Linux — communicates with the Docker daemon via unix sock
 Never exposes the Docker socket to the network.
 """
 
-from asyncio.streams import _ClientConnectedCallback
 import time
 import logging
 import docker
