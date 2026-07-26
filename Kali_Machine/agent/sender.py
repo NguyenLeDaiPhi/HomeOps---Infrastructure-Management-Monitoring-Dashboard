@@ -5,6 +5,7 @@ import socket
 import time
 import struct
 import logging
+import threading
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,6 +25,22 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("KaliSenderAgent")
+
+# ---------------------------------------------------------------------------
+# Docker imports (graceful fallback if Docker SDK not installed)
+# ---------------------------------------------------------------------------
+
+_docker_available = False
+try:
+    from collector.docker import collect_all_container_telemetry
+    from monitor.docker_monitor import DockerMonitor
+    _docker_available = True
+    logger.info("Docker SDK detected — Docker telemetry collection enabled.")
+except ImportError:
+    logger.warning("Docker SDK not installed — Docker telemetry disabled. Install with: pip install docker")
+except Exception as e:
+    logger.warning(f"Docker module failed to load: {e} — Docker telemetry disabled.")
+
 
 def send_framed_json(sock: socket.socket, payload: dict) -> None:
     """
@@ -76,8 +93,70 @@ def send_process_update(sock: socket.socket, events: list) -> None:
     send_framed_json(sock, payload)
     logger.info(f"Process events update transmitted ({len(events)} events)")
 
+
+# ---------------------------------------------------------------------------
+# Docker Telemetry Senders
+# ---------------------------------------------------------------------------
+
+def send_docker_telemetry(sock: socket.socket) -> None:
+    """Collects and transmits Docker container telemetry over TCP."""
+    if not _docker_available:
+        return
+
+    try:
+        payload = get_base_payload("DOCKER_TELEMETRY")
+        docker_data = collect_all_container_telemetry()
+        payload.update(docker_data)
+        send_framed_json(sock, payload)
+        logger.info(
+            f"Docker telemetry transmitted "
+            f"({docker_data['docker_info']['running']} running / "
+            f"{docker_data['docker_info']['total_containers']} total)"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send Docker telemetry: {e}")
+
+
+def send_docker_events(sock: socket.socket, events: list) -> None:
+    """Transmits Docker container lifecycle events over TCP."""
+    payload = get_base_payload("DOCKER_EVENT")
+    payload["events_docker"] = events
+    send_framed_json(sock, payload)
+    logger.info(f"Docker events transmitted ({len(events)} events)")
+
+
+# ---------------------------------------------------------------------------
+# Command Receiver Thread
+# ---------------------------------------------------------------------------
+
+def start_command_receiver_thread():
+    """Starts the FastAPI command receiver in a daemon thread."""
+    try:
+        from agent.command_receiver import start_command_receiver
+        thread = threading.Thread(target=start_command_receiver, daemon=True, name="CommandReceiver")
+        thread.start()
+        logger.info(
+            f"Command Receiver started on "
+            f"{KaliConfig.COMMAND_API_HOST}:{KaliConfig.COMMAND_API_PORT}"
+        )
+        return thread
+    except ImportError:
+        logger.warning("FastAPI/uvicorn not installed — Command Receiver disabled. Install with: pip install fastapi uvicorn")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to start Command Receiver: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main Agent Loop
+# ---------------------------------------------------------------------------
+
 def run_agent():
     logger.info(f"Starting Kali Telemetry Agent -> Target Windows Host {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}")
+
+    # Start the command receiver API in a background thread
+    cmd_thread = start_command_receiver_thread()
 
     while True:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -92,10 +171,18 @@ def run_agent():
             # Instantiate change monitors
             network_monitor = NetworkMonitor()
             process_monitor = ProcessMonitor()
+            docker_monitor = DockerMonitor() if _docker_available else None
 
             # Transmit initial telemetry snapshots
             send_initial_network_snapshot(sock)
             send_initial_process_snapshot(sock)
+
+            # Send initial Docker telemetry immediately
+            if _docker_available:
+                send_docker_telemetry(sock)
+
+            # Track separate Docker telemetry interval
+            last_docker_send = time.time()
 
             while True:
                 send_hardware_metrics(sock)
@@ -108,6 +195,19 @@ def run_agent():
                 proc_events = process_monitor.check_changes()
                 if proc_events:
                     send_process_update(sock, proc_events)
+
+                # Docker telemetry on its own interval (heavier collection)
+                if _docker_available:
+                    now = time.time()
+                    if now - last_docker_send >= KaliConfig.DOCKER_TELEMETRY_INTERVAL:
+                        send_docker_telemetry(sock)
+                        last_docker_send = now
+
+                    # Docker events on every tick (lightweight diff)
+                    if docker_monitor:
+                        docker_events = docker_monitor.check_changes()
+                        if docker_events:
+                            send_docker_events(sock, docker_events)
 
                 time.sleep(KaliConfig.METRIC_INTERVAL)
 

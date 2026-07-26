@@ -33,6 +33,10 @@ class StateManager:
             "hardware": {},
             "network": {},
             "process": {},
+            "docker": {
+                "containers": [],
+                "docker_info": {"total_containers": 0, "running": 0, "paused": 0, "stopped": 0}
+            },
             "alerts": []
         }
 
@@ -58,6 +62,15 @@ class StateManager:
             self.state["hostname"] = hostname
             self.state["last_updated"] = timestamp
             self.state["process"] = process
+
+    def update_docker(self, hostname: str, timestamp: str, containers: list, docker_info: dict):
+        with self.lock:
+            self.state["hostname"] = hostname
+            self.state["last_updated"] = timestamp
+            self.state["docker"] = {
+                "containers": containers,
+                "docker_info": docker_info
+            }
 
     def add_alerts(self, events: list, category: str):
         with self.lock:
@@ -150,6 +163,15 @@ def handle_payload(payload: dict, addr: tuple):
         global_state.add_alerts(events, "PROCESS")
         if "process" in payload:
             global_state.update_process(hostname, timestamp, payload["process"])
+    elif msg_type == "DOCKER_TELEMETRY":
+        global_state.update_docker(
+            hostname, timestamp,
+            payload.get("containers", []),
+            payload.get("docker_info", {})
+        )
+    elif msg_type == "DOCKER_EVENT":
+        events = payload.get("events_docker", [])
+        global_state.add_alerts(events, "DOCKER")
     else:
         logger.warning(f"Received unknown message type: {msg_type} from {addr[0]}")
 
@@ -279,6 +301,14 @@ def start_web_server():
     finally:
         server.close()
 
+def start_gateway_thread():
+    """Starts the Windows FastAPI Command Gateway in a daemon thread."""
+    try:
+        from windows_listen.command_gateway import start_gateway
+        start_gateway()
+    except Exception as e:
+        logger.error(f"Failed to start Command Gateway: {e}")
+
 def main():
     logger.info("Starting HomeOps Windows Telemetry Service...")
     
@@ -290,10 +320,15 @@ def main():
     web_thread = threading.Thread(target=start_web_server, daemon=True)
     web_thread.start()
 
+    # Run FastAPI Command Gateway thread
+    gateway_thread = threading.Thread(target=start_gateway_thread, daemon=True)
+    gateway_thread.start()
+
     try:
         while True:
             tcp_thread.join(timeout=1.0)
             web_thread.join(timeout=1.0)
+            gateway_thread.join(timeout=1.0)
     except KeyboardInterrupt:
         logger.info("Windows Service shutting down...")
 
