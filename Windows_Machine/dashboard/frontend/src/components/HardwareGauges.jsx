@@ -20,8 +20,8 @@ export function HardwareGauges({ hardware = {} }) {
           <span className="metric-badge">{cpuPercent}%</span>
         </div>
         <div className="progress-container">
-          <div 
-            className={`progress-bar ${cpuPercent > 80 ? 'danger' : cpuPercent > 50 ? 'warning' : 'normal'}`} 
+          <div
+            className={`progress-bar ${cpuPercent > 80 ? 'danger' : cpuPercent > 50 ? 'warning' : 'normal'}`}
             style={{ width: `${Math.min(cpuPercent, 100)}%` }}
           ></div>
         </div>
@@ -49,8 +49,8 @@ export function HardwareGauges({ hardware = {} }) {
           <span className="metric-badge">{ramPercent}%</span>
         </div>
         <div className="progress-container">
-          <div 
-            className={`progress-bar ${ramPercent > 85 ? 'danger' : ramPercent > 65 ? 'warning' : 'normal'}`} 
+          <div
+            className={`progress-bar ${ramPercent > 85 ? 'danger' : ramPercent > 65 ? 'warning' : 'normal'}`}
             style={{ width: `${Math.min(ramPercent, 100)}%` }}
           ></div>
         </div>
@@ -78,8 +78,8 @@ export function HardwareGauges({ hardware = {} }) {
           <span className="metric-badge">{diskPercent}%</span>
         </div>
         <div className="progress-container">
-          <div 
-            className={`progress-bar ${diskPercent > 90 ? 'danger' : diskPercent > 70 ? 'warning' : 'normal'}`} 
+          <div
+            className={`progress-bar ${diskPercent > 90 ? 'danger' : diskPercent > 70 ? 'warning' : 'normal'}`}
             style={{ width: `${Math.min(diskPercent, 100)}%` }}
           ></div>
         </div>

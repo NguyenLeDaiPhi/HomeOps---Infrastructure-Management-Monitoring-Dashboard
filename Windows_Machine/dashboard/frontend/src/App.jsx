@@ -5,6 +5,7 @@ import { HardwareGauges } from './components/HardwareGauges';
 import { NetworkCard } from './components/NetworkCard';
 import { AlertFeed } from './components/AlertFeed';
 import { ProcessTable } from './components/ProcessTable';
+import { DockerManager } from './components/DockerManager';
 import './App.css';
 
 export function App() {
@@ -23,6 +24,9 @@ export function App() {
           <NetworkCard network={telemetry.network} />
           <AlertFeed alerts={telemetry.alerts} />
         </div>
+
+        {/* Docker Container Management Section */}
+        <DockerManager docker={telemetry.docker} />
 
         {/* Bottom Full-Width Process Explorer */}
         <ProcessTable processMap={telemetry.process} />
