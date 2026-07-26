@@ -1,0 +1,46 @@
+services:
+  monitoring-server:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: monitoring-server
+    ports:
+      - "5003:5003" # TCP Listener (Kali Linux Agent -> Windows)
+      - "8000:8000" # WebSocket + HTTP API for Dashboard
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s = socket.socket(); s.connect(('127.0.0.1', 8000)); s.close()\""]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      homeops:
+        ipv4_address: 172.20.0.10
+
+  dashboard:
+    build:
+      context: ./dashboard/frontend
+      dockerfile: Dockerfile
+    container_name: windows-dashboard
+    volumes:
+      - ./dashboard/frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_WS_URL: ws://localhost:8000/ws
+      VITE_API_URL: http://localhost:8000/api/state
+    ports:
+      - "5173:5173"
+    depends_on:
+      monitoring-server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      homeops:
+        ipv4_address: 172.20.0.20
+
+networks:
+  homeops:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

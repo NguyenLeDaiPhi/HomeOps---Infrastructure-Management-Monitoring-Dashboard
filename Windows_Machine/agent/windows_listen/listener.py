@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, Set
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import WindowsConfig
+from config.config import WindowsConfig
 
 logging.basicConfig(
     level=logging.INFO,

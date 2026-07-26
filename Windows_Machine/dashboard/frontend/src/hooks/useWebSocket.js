@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 
-export function useWebSocket(wsUrl = 'ws://localhost:8000', fallbackPollUrl = 'http://localhost:8000/api/state') {
+const WS_URL =
+  import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws";
+
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api/state";
+
+export function useWebSocket(
+  wsUrl = WS_URL,
+  fallbackPollUrl = API_URL
+) {
   const [telemetry, setTelemetry] = useState({
     agent_status: 'OFFLINE',
     hostname: 'Kali VM (Disconnected)',
