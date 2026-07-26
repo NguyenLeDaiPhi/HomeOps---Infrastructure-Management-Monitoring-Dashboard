@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from collector.process import process_snapshot
+from collector.process_collector import process_snapshot
 from config import KaliConfig
 
 class ProcessMonitor:

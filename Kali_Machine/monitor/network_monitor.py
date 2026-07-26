@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from collector.network import network_stats
+from collector.network_collector import network_stats
 
 class NetworkMonitor:
     """

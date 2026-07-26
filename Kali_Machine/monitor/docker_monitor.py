@@ -6,7 +6,7 @@ Compares previous container snapshot to current, emitting lifecycle events.
 
 import logging
 from typing import List, Dict, Any
-from collector.docker import list_containers, DockerException
+from collector.docker_collector import list_containers, DockerException
 
 logger = logging.getLogger("DockerMonitor")
 

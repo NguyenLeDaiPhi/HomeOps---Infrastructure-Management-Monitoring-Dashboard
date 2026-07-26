@@ -25,7 +25,7 @@ import uvicorn
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import KaliConfig
-from collector.docker import (
+from collector.docker_collector import (
     list_containers,
     get_container_detail,
     get_container_stats,
@@ -91,7 +91,7 @@ async def health_check():
     """Returns service health and Docker daemon connectivity status."""
     docker_ok = False
     try:
-        from collector.docker import _get_client
+        from collector.docker_collector import _get_client
         _get_client()
         docker_ok = True
     except Exception:
