@@ -11,11 +11,11 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import KaliConfig
-from collector.cpu import cpu_stats
-from collector.ram import ram_stats
-from collector.disk import disk_stats
-from collector.network import network_stats
-from collector.process import process_snapshot
+from collector.cpu_collector import cpu_stats
+from collector.ram_collector import ram_stats
+from collector.disk_collector import disk_stats
+from collector.network_collector import network_stats
+from collector.process_collector import process_snapshot
 from monitor.network_monitor import NetworkMonitor
 from monitor.process_monitor import ProcessMonitor
 
@@ -32,7 +32,7 @@ logger = logging.getLogger("KaliSenderAgent")
 
 _docker_available = False
 try:
-    from collector.docker import collect_all_container_telemetry
+    from collector.docker_collector import collect_all_container_telemetry
     from monitor.docker_monitor import DockerMonitor
     _docker_available = True
     logger.info("Docker SDK detected — Docker telemetry collection enabled.")
