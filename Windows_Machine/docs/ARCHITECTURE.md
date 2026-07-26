@@ -8,23 +8,23 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
 ## High-Level Data Flow
 
 ```
-+------------------------------------+                +---------------------------------------+
-|        Kali Linux VM               |                |             Windows Host              |
-|        (192.168.2.2)               |                |             (192.168.2.1)             |
-|                                    |                |                                       |
-|  [Collectors: CPU, RAM, Disk, Net] |                |  [TCP Listener Server (Port 5003)]   |
-|                 |                  |                |                  |                    |
-|  [Monitors: Net & Process Events]  |                |          [State Manager]              |
-|                 |                  |                |                  |                    |
++------------------------------------+                    +---------------------------------------+
+|        Kali Linux VM               |                    |             Windows Host              |
+|        (192.168.2.2)               |                    |             (192.168.2.1)             |
+|                                    |                    |                                       |
+|  [Collectors: CPU, RAM, Disk, Net] |                    |  [TCP Listener Server (Port 5003)]    |
+|                 |                  |                    |                  |                    |
+|  [Monitors: Net & Process Events]  |                    |          [State Manager]              |
+|                 |                  |                    |                  |                    |
 |   [Sender Agent TCP Client]        | === TCP Socket ===>  [WebSocket & HTTP Bridge (8000)]|
-|   (Length-Prefixed Binary Header)  |                |                  |                    |
-+------------------------------------+                +------------------|--------------------+
-                                                                         | WebSocket / REST
-                                                                         v
-                                                      +---------------------------------------+
-                                                      |           React Live Dashboard        |
-                                                      |         (http://localhost:5173)       |
-                                                      +---------------------------------------+
+|   (Length-Prefixed Binary Header)  |                    |                  |                    |
++------------------------------------+                    +------------------|--------------------+
+                                                                             | WebSocket / REST
+                                                                             v
+                                                          +---------------------------------------+
+                                                          |           React Live Dashboard        |
+                                                          |         (http://localhost:5173)       |
+                                                          +---------------------------------------+
 ```
 
 ---
