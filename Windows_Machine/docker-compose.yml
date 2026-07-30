@@ -7,8 +7,9 @@ services:
     ports:
       - "5003:5003" # TCP Listener (Kali Linux Agent -> Windows)
       - "8000:8000" # WebSocket + HTTP API for Dashboard
+      - "8500:8500"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s = socket.socket(); s.connect(('127.0.0.1', 8000)); s.close()\""]
+      test: [ "CMD-SHELL", "python -c \"import socket; s = socket.socket(); s.connect(('127.0.0.1', 8000)); s.close()\"" ]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -28,6 +29,7 @@ services:
     environment:
       VITE_WS_URL: ws://localhost:8000/ws
       VITE_API_URL: http://localhost:8000/api/state
+      VITE_DOCKER_API_URL: http://localhost:8500/api/v1/docker
     ports:
       - "5173:5173"
     depends_on:

@@ -1,0 +1,9 @@
+fastapi
+httpx
+uvicorn
+requests
+psutil
+websockets
+sqlalchemy
+pydantic
+python-dotenv
