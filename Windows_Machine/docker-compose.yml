@@ -1,18 +1,43 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: homeops-postgres
+    environment:
+      POSTGRES_DB: homeops
+      POSTGRES_USER: homeops
+      POSTGRES_PASSWORD: homeops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U homeops -d homeops" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      homeops:
+        ipv4_address: 172.20.0.30
+
   monitoring-server:
     build:
       context: ./agent
       dockerfile: Dockerfile
     container_name: monitoring-server
+    environment:
+      DATABASE_URL: postgresql://homeops:homeops@homeops-postgres:5432/homeops
+      METRICS_RETENTION_DAYS: 30
     ports:
       - "5003:5003" # TCP Listener (Kali Linux Agent -> Windows)
       - "8000:8000" # WebSocket + HTTP API for Dashboard
-      - "8500:8500"
+      - "8500:8500" # Command Gateway REST API
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import socket; s = socket.socket(); s.connect(('127.0.0.1', 8000)); s.close()\"" ]
       interval: 5s
       timeout: 3s
       retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       homeops:
@@ -39,6 +64,9 @@ services:
     networks:
       homeops:
         ipv4_address: 172.20.0.20
+
+volumes:
+  postgres_data:
 
 networks:
   homeops:

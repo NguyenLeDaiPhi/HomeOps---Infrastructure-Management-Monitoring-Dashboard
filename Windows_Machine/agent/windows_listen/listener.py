@@ -8,12 +8,16 @@ import asyncio
 import threading
 import hashlib
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional, Set
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config import WindowsConfig
+from database.connection import init_db
+from database.repositories import MetricsRepository
+from database.retention import start_retention_daemon
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +25,19 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("WindowsListener")
+
+# Non-blocking executor for DB operations so DB never stalls live telemetry
+db_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="DBWriter")
+
+def safe_db_submit(fn, *args, **kwargs):
+    """Submits DB task asynchronously. Catches and logs errors without blocking caller."""
+    def _wrapper():
+        try:
+            fn(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Async DB write task failed: {e}")
+
+    db_executor.submit(_wrapper)
 
 class StateManager:
     """In-memory telemetry state manager with rolling alert logs."""
@@ -149,29 +166,48 @@ def handle_payload(payload: dict, addr: tuple):
             payload.get("ram", {}),
             payload.get("disk", [])
         )
+        safe_db_submit(MetricsRepository.save_hardware_metrics, payload)
+
     elif msg_type == "INITIAL_NETWORK_SNAPSHOT":
         global_state.update_network(hostname, timestamp, payload.get("network", {}))
+
     elif msg_type == "INITIAL_PROCESS_SNAPSHOT":
         global_state.update_process(hostname, timestamp, payload.get("process", {}))
+
     elif msg_type == "NETWORK_EVENT":
         events = payload.get("events_network", [])
         global_state.add_alerts(events, "NETWORK")
         if "network" in payload:
             global_state.update_network(hostname, timestamp, payload["network"])
+        for ev in events:
+            safe_db_submit(
+                MetricsRepository.save_connection_event,
+                hostname, "NETWORK_EVENT", str(ev), timestamp
+            )
+
     elif msg_type == "PROCESS_EVENT":
         events = payload.get("events_process", [])
         global_state.add_alerts(events, "PROCESS")
         if "process" in payload:
             global_state.update_process(hostname, timestamp, payload["process"])
+
     elif msg_type == "DOCKER_TELEMETRY":
         global_state.update_docker(
             hostname, timestamp,
             payload.get("containers", []),
             payload.get("docker_info", {})
         )
+        safe_db_submit(MetricsRepository.save_docker_metrics, payload)
+
     elif msg_type == "DOCKER_EVENT":
         events = payload.get("events_docker", [])
         global_state.add_alerts(events, "DOCKER")
+        for ev in events:
+            safe_db_submit(
+                MetricsRepository.save_connection_event,
+                hostname, "DOCKER_EVENT", str(ev), timestamp
+            )
+
     else:
         logger.warning(f"Received unknown message type: {msg_type} from {addr[0]}")
 
@@ -191,12 +227,20 @@ def start_tcp_listener():
         while True:
             client, addr = server.accept()
             logger.info(f"Agent connected from {addr[0]}:{addr[1]}")
+            safe_db_submit(
+                MetricsRepository.save_connection_event,
+                f"Agent-{addr[0]}", "CONNECTED", f"Agent connected from {addr[0]}:{addr[1]}"
+            )
             
             try:
                 while True:
                     header = recv_exact(client, 4)
                     if not header:
                         logger.info(f"Agent {addr[0]} disconnected cleanly.")
+                        safe_db_submit(
+                            MetricsRepository.save_connection_event,
+                            f"Agent-{addr[0]}", "DISCONNECTED", f"Agent {addr[0]} disconnected cleanly."
+                        )
                         break
 
                     msg_length = struct.unpack("!I", header)[0]
@@ -210,7 +254,6 @@ def start_tcp_listener():
                         handle_payload(payload, addr)
                     except json.JSONDecodeError as e:
                         logger.error(f"Malformed JSON payload from {addr[0]}: {e}")
-                        # Continue inner loop so client connection is NOT dropped
                         continue
 
             except (ConnectionResetError, BrokenPipeError):
@@ -234,7 +277,6 @@ def handle_web_client(client_sock: socket.socket):
             return
 
         lines = data.split('\r\n')
-        first_line = lines[0] if lines else ""
 
         # WebSocket Upgrade Handling
         if "Upgrade: websocket" in data or "Sec-WebSocket-Key" in data:
@@ -312,6 +354,12 @@ def start_gateway_thread():
 def main():
     logger.info("Starting HomeOps Windows Telemetry Service...")
     
+    # Initialize PostgreSQL Database schema
+    init_db()
+
+    # Start 24h retention cleanup daemon thread
+    start_retention_daemon()
+
     # Run TCP Listener thread
     tcp_thread = threading.Thread(target=start_tcp_listener, daemon=True)
     tcp_thread.start()
@@ -331,6 +379,8 @@ def main():
             gateway_thread.join(timeout=1.0)
     except KeyboardInterrupt:
         logger.info("Windows Service shutting down...")
+    finally:
+        db_executor.shutdown(wait=False)
 
 if __name__ == "__main__":
     main()
