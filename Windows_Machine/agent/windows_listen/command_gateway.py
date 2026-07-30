@@ -1,26 +1,16 @@
 """
 Windows Command Gateway — FastAPI Application.
 
-Proxies container management commands from the React Dashboard (or external clients)
-to the Kali Agent's Command Receiver API (http://192.168.2.2:8501).
-
-Runs on port 8500.
-
-Sequence Flow (e.g. Stop container):
-1. User clicks "Stop container" in React Dashboard.
-2. React sends POST /api/v1/docker/containers/{id}/stop to Windows API Gateway (:8500).
-3. Windows Gateway validates request & authentication.
-4. Windows Gateway forwards REST command to Kali Agent (:8501) via HTTP client.
-5. Kali executes command using Python Docker SDK locally and returns response.
-6. Windows Gateway records the action event in StateManager alerts list.
-7. Windows Gateway returns result to React Dashboard.
+Proxies container management commands from the React Dashboard to Kali Agent
+and exposes Historical Metrics REST API endpoints for PostgreSQL time-series queries.
 """
 
 import os
 import sys
 import time
 import logging
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config import WindowsConfig
 from windows_listen.listener import global_state
+from database.repositories import MetricsRepository, parse_timestamp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,12 +33,12 @@ logging.basicConfig(
 logger = logging.getLogger("WindowsCommandGateway")
 
 app = FastAPI(
-    title="HomeOps Windows Command Gateway API",
-    description="Gateway API proxying container management commands to Kali agent.",
-    version="1.0.0",
+    title="HomeOps Windows Command & Historical Metrics Gateway API",
+    description="Gateway API proxying container management commands & querying PostgreSQL historical metrics.",
+    version="2.0.0",
 )
 
-# Enable CORS for React dashboard (Vite default: http://localhost:5173)
+# Enable CORS for React dashboard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -131,7 +122,70 @@ async def health():
     }
 
 
-# Get Cached State
+# ==========================================
+# HISTORICAL METRICS REST API ENDPOINTS
+# ==========================================
+
+@app.get("/api/v1/history/hardware")
+async def get_hardware_history(
+    host: Optional[str] = Query(None, description="Filter by hostname"),
+    start: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
+    end: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
+    limit: int = Query(100, ge=1, le=1000, description="Max records to return"),
+):
+    """Returns historical hardware telemetry records from PostgreSQL."""
+    start_dt = parse_timestamp(start) if start else None
+    end_dt = parse_timestamp(end) if end else None
+
+    metrics = MetricsRepository.query_hardware_history(
+        hostname=host, start_time=start_dt, end_time=end_dt, limit=limit
+    )
+    return {
+        "status": "success",
+        "count": len(metrics),
+        "host_filter": host,
+        "data": metrics,
+    }
+
+
+@app.get("/api/v1/history/docker")
+async def get_docker_history(
+    host: Optional[str] = Query(None, description="Filter by hostname"),
+    container: Optional[str] = Query(None, description="Filter by container name or ID"),
+    start: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
+    end: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
+    limit: int = Query(100, ge=1, le=1000, description="Max records to return"),
+):
+    """Returns historical docker container telemetry records from PostgreSQL."""
+    start_dt = parse_timestamp(start) if start else None
+    end_dt = parse_timestamp(end) if end else None
+
+    metrics = MetricsRepository.query_docker_history(
+        hostname=host, container=container, start_time=start_dt, end_time=end_dt, limit=limit
+    )
+    return {
+        "status": "success",
+        "count": len(metrics),
+        "host_filter": host,
+        "container_filter": container,
+        "data": metrics,
+    }
+
+
+@app.get("/api/v1/history/summary")
+async def get_historical_summary(
+    host: Optional[str] = Query(None, description="Filter by hostname"),
+):
+    """Returns historical summary stats (averages, latest timestamp, docker sample count)."""
+    summary = MetricsRepository.query_summary_metrics(hostname=host)
+    return {
+        "status": "success",
+        "host_filter": host,
+        "summary": summary,
+    }
+
+
+# Get Cached Docker State
 @app.get("/api/v1/docker/state")
 async def get_docker_state():
     """Returns current telemetry state including container snapshot."""
@@ -145,7 +199,7 @@ async def get_docker_state():
     }
 
 
-# Forwarded Docker Endpoints
+# Forwarded Docker Control Endpoints
 @app.get("/api/v1/docker/containers")
 async def list_containers(all: bool = Query(True)):
     return await _forward_to_kali("GET", "/api/v1/docker/containers", params={"all": all})
@@ -170,6 +224,11 @@ async def start_container(container_id: str):
         ],
         "DOCKER",
     )
+    MetricsRepository.save_connection_event(
+        global_state.state.get("hostname", "Unknown"),
+        "CONTAINER_START",
+        f"Container {container_id} started by user",
+    )
     return res
 
 
@@ -187,6 +246,11 @@ async def stop_container(container_id: str):
         ],
         "DOCKER",
     )
+    MetricsRepository.save_connection_event(
+        global_state.state.get("hostname", "Unknown"),
+        "CONTAINER_STOP",
+        f"Container {container_id} stopped by user",
+    )
     return res
 
 
@@ -203,6 +267,11 @@ async def restart_container(container_id: str):
             }
         ],
         "DOCKER",
+    )
+    MetricsRepository.save_connection_event(
+        global_state.state.get("hostname", "Unknown"),
+        "CONTAINER_RESTART",
+        f"Container {container_id} restarted by user",
     )
     return res
 
@@ -226,7 +295,7 @@ async def get_stats(container_id: str):
 
 def start_gateway():
     logger.info(
-        f"Starting Windows Command Gateway on "
+        f"Starting Windows Command Gateway & Historical API on "
         f"{WindowsConfig.COMMAND_API_HOST}:{WindowsConfig.COMMAND_API_PORT}"
     )
     uvicorn.run(
