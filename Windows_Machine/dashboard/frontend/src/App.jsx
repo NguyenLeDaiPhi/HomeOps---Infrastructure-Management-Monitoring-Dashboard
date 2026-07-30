@@ -1,41 +1,30 @@
 import React from 'react';
-import { useWebSocket } from './hooks/useWebSocket';
-import { Header } from './components/Header';
-import { HardwareGauges } from './components/HardwareGauges';
-import { NetworkCard } from './components/NetworkCard';
-import { AlertFeed } from './components/AlertFeed';
-import { ProcessTable } from './components/ProcessTable';
-import { DockerManager } from './components/DockerManager';
+import { Routes, Route } from 'react-router-dom';
+import { AppLayout } from './components/layout/AppLayout';
+import { DashboardPage } from './pages/DashboardPage';
+import { InfrastructurePage } from './pages/InfrastructurePage';
+import { DockerPage } from './pages/DockerPage';
+import { NetworkPage } from './pages/NetworkPage';
+import { ProcessesPage } from './pages/ProcessesPage';
+import { EventsPage } from './pages/EventsPage';
+import { HistoricalMetricsPage } from './pages/HistoricalMetricsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import './App.css';
 
 export function App() {
-  const { telemetry, isConnected, mode } = useWebSocket();
-
   return (
-    <div className="dashboard-container">
-      <Header telemetry={telemetry} isConnected={isConnected} mode={mode} />
-
-      <main className="dashboard-main">
-        {/* Top Hardware Metrics Grid */}
-        <HardwareGauges hardware={telemetry.hardware} />
-
-        {/* Middle Split: Network Interfaces & Live Alert Log */}
-        <div className="middle-grid">
-          <NetworkCard network={telemetry.network} />
-          <AlertFeed alerts={telemetry.alerts} />
-        </div>
-
-        {/* Docker Container Management Section */}
-        <DockerManager docker={telemetry.docker} />
-
-        {/* Bottom Full-Width Process Explorer */}
-        <ProcessTable processMap={telemetry.process} />
-      </main>
-
-      <footer className="dashboard-footer">
-        <p>HomeOps Infrastructure Dashboard • Kali Linux Agent & Windows Telemetry Host • 2026 Production Build</p>
-      </footer>
-    </div>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/infrastructure" element={<InfrastructurePage />} />
+        <Route path="/docker" element={<DockerPage />} />
+        <Route path="/network" element={<NetworkPage />} />
+        <Route path="/processes" element={<ProcessesPage />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/history" element={<HistoricalMetricsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
   );
 }
 
