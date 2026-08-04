@@ -20,3 +20,5 @@ class WindowsConfig:
     # Timeout (seconds) for forwarding commands to Kali
     COMMAND_TIMEOUT: float = float(os.getenv("COMMAND_TIMEOUT", "30.0"))
 
+    # Database connection from Windows agent to database PostgreSQL
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://homeops:homeops@homeops-postgres:5432/homeops")

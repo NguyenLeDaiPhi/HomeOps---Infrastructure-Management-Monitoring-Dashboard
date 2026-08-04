@@ -6,17 +6,19 @@ import struct
 import logging
 import asyncio
 import threading
+import time
 import hashlib
 import base64
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, List
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from datetime import datetime, timezone
 from config.config import WindowsConfig
 from database.connection import init_db
-from database.repositories import MetricsRepository
+from database.repositories import MetricsRepository, HeartbeatRepository, parse_timestamp
 from database.retention import start_retention_daemon
 
 logging.basicConfig(
@@ -40,9 +42,10 @@ def safe_db_submit(fn, *args, **kwargs):
     db_executor.submit(_wrapper)
 
 class StateManager:
-    """In-memory telemetry state manager with rolling alert logs."""
+    """In-memory telemetry state manager with rolling alert logs and heartbeat tracking."""
     def __init__(self):
         self.lock = threading.Lock()
+        self.hosts: Dict[str, Dict[str, Any]] = {}
         self.state: Dict[str, Any] = {
             "agent_status": "OFFLINE",
             "hostname": "Unknown",
@@ -54,8 +57,83 @@ class StateManager:
                 "containers": [],
                 "docker_info": {"total_containers": 0, "running": 0, "paused": 0, "stopped": 0}
             },
-            "alerts": []
+            "alerts": [],
+            "hosts": {}
         }
+
+    def update_heartbeat(self, hostname: str, timestamp: str) -> bool:
+        with self.lock:
+            ts_dt = parse_timestamp(timestamp)
+            prev_info = self.hosts.get(hostname, {})
+            prev_status = prev_info.get("status", "OFFLINE")
+
+            self.hosts[hostname] = {
+                "status": "ONLINE",
+                "last_heartbeat": timestamp,
+                "last_heartbeat_dt": ts_dt
+            }
+            if "hosts" not in self.state:
+                self.state["hosts"] = {}
+            self.state["hosts"][hostname] = {
+                "status": "ONLINE",
+                "last_heartbeat": timestamp
+            }
+            self.state["agent_status"] = "ONLINE"
+            self.state["hostname"] = hostname
+            self.state["last_updated"] = timestamp
+
+            return prev_status != "ONLINE"
+
+    def mark_offline(self, hostname: str) -> bool:
+        with self.lock:
+            if hostname in self.hosts:
+                if self.hosts[hostname]["status"] != "OFFLINE":
+                    self.hosts[hostname]["status"] = "OFFLINE"
+                    if "hosts" in self.state and hostname in self.state["hosts"]:
+                        self.state["hosts"][hostname]["status"] = "OFFLINE"
+                    if self.state.get("hostname") == hostname:
+                        self.state["agent_status"] = "OFFLINE"
+                    return True
+            return False
+
+    def mark_online(self, hostname: str) -> bool:
+        with self.lock:
+            if hostname in self.hosts:
+                if self.hosts[hostname]["status"] != "ONLINE":
+                    self.hosts[hostname]["status"] = "ONLINE"
+                    if "hosts" in self.state and hostname in self.state["hosts"]:
+                        self.state["hosts"][hostname]["status"] = "ONLINE"
+                    if self.state.get("hostname") == hostname:
+                        self.state["agent_status"] = "ONLINE"
+                    return True
+            return False
+
+    def check_heartbeat_timeouts(self, timeout_seconds: float = 30.0) -> List[str]:
+        now = datetime.now(timezone.utc)
+        timed_out_hosts = []
+        with self.lock:
+            for h_name, h_info in self.hosts.items():
+                if h_info.get("status") == "ONLINE":
+                    hb_dt = h_info.get("last_heartbeat_dt")
+                    if hb_dt and (now - hb_dt).total_seconds() > timeout_seconds:
+                        h_info["status"] = "OFFLINE"
+                        if "hosts" in self.state and h_name in self.state["hosts"]:
+                            self.state["hosts"][h_name]["status"] = "OFFLINE"
+                        if self.state.get("hostname") == h_name:
+                            self.state["agent_status"] = "OFFLINE"
+                        timed_out_hosts.append(h_name)
+        return timed_out_hosts
+
+    def get_host_statuses(self) -> List[Dict[str, Any]]:
+        with self.lock:
+            res = []
+            for h_name, h_info in self.hosts.items():
+                res.append({
+                    "hostname": h_name,
+                    "status": h_info.get("status", "OFFLINE"),
+                    "last_heartbeat": h_info.get("last_heartbeat")
+                })
+            return res
 
     def update_hardware(self, hostname: str, timestamp: str, cpu: dict, ram: dict, disk: list):
         with self.lock:
@@ -66,6 +144,18 @@ class StateManager:
                 "cpu": cpu,
                 "ram": ram,
                 "disk": disk
+            }
+            ts_dt = parse_timestamp(timestamp)
+            self.hosts[hostname] = {
+                "status": "ONLINE",
+                "last_heartbeat": timestamp,
+                "last_heartbeat_dt": ts_dt
+            }
+            if "hosts" not in self.state:
+                self.state["hosts"] = {}
+            self.state["hosts"][hostname] = {
+                "status": "ONLINE",
+                "last_heartbeat": timestamp
             }
 
     def update_network(self, hostname: str, timestamp: str, network: dict):
@@ -117,6 +207,38 @@ def broadcast_ws_state():
     payload = json.dumps(snapshot).encode('utf-8')
     
     # Construct WebSocket unmasked text frame
+    length = len(payload)
+    if length <= 125:
+        header = bytes([0x81, length])
+    elif length <= 65535:
+        header = bytes([0x81, 126]) + struct.pack("!H", length)
+    else:
+        header = bytes([0x81, 127]) + struct.pack("!Q", length)
+
+    frame = header + payload
+
+    with ws_clients_lock:
+        to_remove = set()
+        for client in ws_clients:
+            try:
+                client.sendall(frame)
+            except Exception:
+                to_remove.add(client)
+        for client in to_remove:
+            ws_clients.remove(client)
+            try:
+                client.close()
+            except Exception:
+                pass
+
+def broadcast_ws_message(message: dict):
+    """Broadcasts an arbitrary JSON message to all connected WebSocket clients.
+
+    Unlike broadcast_ws_state() which sends the full telemetry snapshot,
+    this function sends a targeted message dict (e.g. HTTP_REQUEST_EVENT).
+    """
+    payload = json.dumps(message).encode('utf-8')
+
     length = len(payload)
     if length <= 125:
         header = bytes([0x81, length])
@@ -207,6 +329,20 @@ def handle_payload(payload: dict, addr: tuple):
                 MetricsRepository.save_connection_event,
                 hostname, "DOCKER_EVENT", str(ev), timestamp
             )
+
+    elif msg_type == "HEARTBEAT":
+        global_state.update_heartbeat(hostname, timestamp)
+        safe_db_submit(
+            HeartbeatRepository.update_host_heartbeat,
+            hostname, "ONLINE", timestamp
+        )
+        ws_msg = {
+            "type": "HEARTBEAT_UPDATE",
+            "hostname": hostname,
+            "status": "ONLINE",
+            "last_heartbeat": timestamp
+        }
+        broadcast_ws_message(ws_msg)
 
     else:
         logger.warning(f"Received unknown message type: {msg_type} from {addr[0]}")
@@ -343,6 +479,35 @@ def start_web_server():
     finally:
         server.close()
 
+def _heartbeat_monitor_worker():
+    logger.info("Heartbeat 1-second background monitor active (timeout: 30s).")
+    while True:
+        try:
+            timed_out_hosts = global_state.check_heartbeat_timeouts(timeout_seconds=30.0)
+            for h_name in timed_out_hosts:
+                logger.warning(f"Host '{h_name}' heartbeat timed out (>30s) -> marking OFFLINE.")
+                last_hb = global_state.hosts.get(h_name, {}).get("last_heartbeat")
+                safe_db_submit(
+                    HeartbeatRepository.update_host_heartbeat,
+                    h_name, "OFFLINE", last_hb or datetime.now(timezone.utc).isoformat()
+                )
+                ws_msg = {
+                    "type": "HEARTBEAT_UPDATE",
+                    "hostname": h_name,
+                    "status": "OFFLINE",
+                    "last_heartbeat": last_hb
+                }
+                broadcast_ws_message(ws_msg)
+        except Exception as e:
+            logger.error(f"Heartbeat monitor worker error: {e}")
+        time.sleep(1.0)
+
+def start_heartbeat_monitor():
+    """Launches the 1-second heartbeat timeout monitor daemon thread."""
+    t = threading.Thread(target=_heartbeat_monitor_worker, daemon=True, name="HeartbeatMonitor")
+    t.start()
+    return t
+
 def start_gateway_thread():
     """Starts the Windows FastAPI Command Gateway in a daemon thread."""
     try:
@@ -359,6 +524,9 @@ def main():
 
     # Start 24h retention cleanup daemon thread
     start_retention_daemon()
+
+    # Start background heartbeat offline monitor thread
+    start_heartbeat_monitor()
 
     # Run TCP Listener thread
     tcp_thread = threading.Thread(target=start_tcp_listener, daemon=True)

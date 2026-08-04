@@ -1,105 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
+import { useHistoricalMetrics } from '../hooks/useHistoricalMetrics';
 import { PageContainer } from '../components/layout/PageContainer';
 import { SectionCard } from '../components/layout/SectionCard';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { MetricCard } from '../components/shared/MetricCard';
 
-const API_BASE = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
-const HISTORY_BASE = API_BASE.replace('/docker', '/history');
-
 export function HistoricalMetricsPage() {
-  const [timeRange, setTimeRange] = useState('1h');
-  const [hostFilter, setHostFilter] = useState('');
-  const [containerFilter, setContainerFilter] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const [summary, setSummary] = useState({
-    average_cpu: 0,
-    average_ram: 0,
-    average_disk: 0,
-    docker_samples_count: 0,
-    latest_timestamp: null,
-  });
-
-  const [hardwareHistory, setHardwareHistory] = useState([]);
-  const [dockerHistory, setDockerHistory] = useState([]);
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const pageSize = 15;
-
-  const fetchHistoricalData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    // Calculate ISO start timestamp based on timeRange
-    const now = new Date();
-    let startTime = null;
-    if (timeRange === '1h') startTime = new Date(now.getTime() - 60 * 60 * 1000);
-    else if (timeRange === '6h') startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-    else if (timeRange === '24h') startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    else if (timeRange === '7d') startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const startIso = startTime ? startTime.toISOString() : undefined;
-
-    try {
-      // 1. Fetch Summary
-      const sumUrl = new URL(`${HISTORY_BASE}/summary`);
-      if (hostFilter) sumUrl.searchParams.append('host', hostFilter);
-      const sumRes = await fetch(sumUrl.toString());
-      if (sumRes.ok) {
-        const sumData = await sumRes.json();
-        if (sumData.summary) setSummary(sumData.summary);
-      }
-
-      // 2. Fetch Hardware History
-      const hwUrl = new URL(`${HISTORY_BASE}/hardware`);
-      if (hostFilter) hwUrl.searchParams.append('host', hostFilter);
-      if (startIso) hwUrl.searchParams.append('start', startIso);
-      hwUrl.searchParams.append('limit', '200');
-
-      const hwRes = await fetch(hwUrl.toString());
-      if (hwRes.ok) {
-        const hwData = await hwRes.json();
-        setHardwareHistory(hwData.data || []);
-      }
-
-      // 3. Fetch Docker History
-      const docUrl = new URL(`${HISTORY_BASE}/docker`);
-      if (hostFilter) docUrl.searchParams.append('host', hostFilter);
-      if (containerFilter) docUrl.searchParams.append('container', containerFilter);
-      if (startIso) docUrl.searchParams.append('start', startIso);
-      docUrl.searchParams.append('limit', '200');
-
-      const docRes = await fetch(docUrl.toString());
-      if (docRes.ok) {
-        const docData = await docRes.json();
-        setDockerHistory(docData.data || []);
-      }
-    } catch (err) {
-      logger_err(err);
-      setError(`Failed to load historical data from PostgreSQL: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [timeRange, hostFilter, containerFilter]);
-
-  function logger_err(err) {
-    console.error('Error fetching historical metrics:', err);
-  }
-
-  useEffect(() => {
-    fetchHistoricalData();
-  }, [fetchHistoricalData]);
-
-  // Paginated Hardware History slice
-  const totalPages = Math.ceil(hardwareHistory.length / pageSize) || 1;
-  const paginatedHardware = hardwareHistory.slice((page - 1) * pageSize, page * pageSize);
-
-  // Compute Peak CPU / Max RAM / Free Disk from returned data
-  const peakCpu = hardwareHistory.reduce((max, d) => (d.cpu_percent > max ? d.cpu_percent : max), 0);
-  const maxRam = hardwareHistory.reduce((max, d) => ((d.ram_used_mb || 0) > max ? d.ram_used_mb : max), 0);
+  const {
+    timeRange,
+    setTimeRange,
+    loading,
+    error,
+    summary,
+    hardwareHistory,
+    dockerHistory,
+    page,
+    setPage,
+    totalPages,
+    paginatedHardware,
+    peakCpu,
+    maxRam,
+  } = useHistoricalMetrics();
 
   return (
     <PageContainer
@@ -112,10 +33,7 @@ export function HistoricalMetricsPage() {
             <button
               key={range}
               className={`btn ${timeRange === range ? 'btn-primary' : 'btn-secondary'} text-xs`}
-              onClick={() => {
-                setTimeRange(range);
-                setPage(1);
-              }}
+              onClick={() => setTimeRange(range)}
             >
               {range.toUpperCase()}
             </button>
@@ -154,7 +72,14 @@ export function HistoricalMetricsPage() {
           title="Docker Database Samples"
           subtitle="Stored Container Metric Rows"
           value={summary.docker_samples_count}
-          stats={[{ label: 'Latest Audit', value: summary.latest_timestamp ? summary.latest_timestamp.split('T')[1]?.slice(0, 8) : 'N/A' }]}
+          stats={[
+            {
+              label: 'Latest Audit',
+              value: summary.latest_timestamp
+                ? summary.latest_timestamp.split('T')[1]?.slice(0, 8)
+                : 'N/A',
+            },
+          ]}
           warningThreshold={99999}
           dangerThreshold={100000}
         />
@@ -279,7 +204,9 @@ export function HistoricalMetricsPage() {
                 {paginatedHardware.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="empty-state">
-                      {loading ? 'Querying PostgreSQL database...' : 'No historical metrics found for this query.'}
+                      {loading
+                        ? 'Querying PostgreSQL database...'
+                        : 'No historical metrics found for this query.'}
                     </td>
                   </tr>
                 ) : (
@@ -343,7 +270,9 @@ export function HistoricalMetricsPage() {
                 {dockerHistory.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="empty-state">
-                      {loading ? 'Querying PostgreSQL database...' : 'No historical Docker metric samples found.'}
+                      {loading
+                        ? 'Querying PostgreSQL database...'
+                        : 'No historical Docker metric samples found.'}
                     </td>
                   </tr>
                 ) : (
@@ -358,9 +287,13 @@ export function HistoricalMetricsPage() {
                         <StatusBadge status={d.status || 'unknown'} />
                       </td>
                       <td>
-                        <span className="usage-badge normal">{d.cpu_percent !== null ? `${d.cpu_percent}%` : 'NULL'}</span>
+                        <span className="usage-badge normal">
+                          {d.cpu_percent !== null ? `${d.cpu_percent}%` : 'NULL'}
+                        </span>
                       </td>
-                      <td className="font-mono text-xs">{d.memory_mb !== null ? `${d.memory_mb} MB` : 'NULL'}</td>
+                      <td className="font-mono text-xs">
+                        {d.memory_mb !== null ? `${d.memory_mb} MB` : 'NULL'}
+                      </td>
                     </tr>
                   ))
                 )}

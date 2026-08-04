@@ -3,11 +3,11 @@ import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from config.config import WindowsConfig
 
 logger = logging.getLogger("HomeOpsDatabase")
 
-DEFAULT_DB_URL = "postgresql://homeops:homeops@homeops-postgres:5432/homeops"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
+DATABASE_URL = os.getenv("DATABASE_URL", WindowsConfig.DATABASE_URL)
 
 # Fallback for SQLite in local test environments if postgres driver isn't installed
 if DATABASE_URL.startswith("sqlite"):
@@ -28,7 +28,7 @@ class Base(DeclarativeBase):
 def init_db():
     """Initializes database tables. Logs warnings if DB is unreachable on startup."""
     try:
-        from database.models import Host, HardwareMetric, DockerMetric, ConnectionEvent
+        from database.models import Host, HardwareMetric, DockerMetric, ConnectionEvent, HttpRequestLog, HostHeartbeat
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables verified/created successfully.")
         return True
