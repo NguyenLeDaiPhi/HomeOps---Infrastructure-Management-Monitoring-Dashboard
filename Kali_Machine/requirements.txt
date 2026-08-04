@@ -1,0 +1,6 @@
+psutil
+docker
+fastapi
+uvicorn
+requests
+websockets

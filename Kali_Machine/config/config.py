@@ -5,6 +5,7 @@ class KaliConfig:
     WINDOWS_IP: str = os.getenv("WINDOWS_IP", "192.168.2.1")
     PORT: int = int(os.getenv("PORT", "5003"))
     METRIC_INTERVAL: float = float(os.getenv("METRIC_INTERVAL", "5.0"))
+    HEARTBEAT_INTERVAL: float = float(os.getenv("HEARTBEAT_INTERVAL", "5.0"))
     RECONNECT_DELAY: float = float(os.getenv("RECONNECT_DELAY", "3.0"))
     
     # Process monitoring thresholds
