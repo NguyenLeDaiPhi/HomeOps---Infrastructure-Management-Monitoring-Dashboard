@@ -6,6 +6,7 @@ import { SectionCard } from '../components/layout/SectionCard';
 import { AlertFeed } from '../components/AlertFeed';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { Link } from 'react-router-dom';
+import { HostStatusPanel } from '../components/HostStatusPanel';
 
 export function DashboardPage() {
   const { telemetry } = useTelemetry();
@@ -155,6 +156,11 @@ export function DashboardPage() {
 
         {/* Live Alerts Feed */}
         <AlertFeed alerts={alerts} />
+      </div>
+
+      {/* Heartbeat Liveness Matrix */}
+      <div className="margin-top-4">
+        <HostStatusPanel />
       </div>
     </PageContainer>
   );

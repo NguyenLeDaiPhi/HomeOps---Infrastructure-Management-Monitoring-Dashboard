@@ -98,3 +98,40 @@ class ConnectionEvent(Base):
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     host: Mapped[Optional["Host"]] = relationship("Host", back_populates="connection_events")
+
+
+class HttpRequestLog(Base):
+    """Stores individual HTTP request/response logs captured by the monitoring middleware."""
+    __tablename__ = "http_request_logs"
+
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    client_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    method: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bytes_in: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    bytes_out: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class HostHeartbeat(Base):
+    """Stores the latest heartbeat timestamp and current status (ONLINE/OFFLINE) per host."""
+    __tablename__ = "host_heartbeat"
+
+    host_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("hosts.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_heartbeat: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ONLINE")
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    host: Mapped[Optional["Host"]] = relationship("Host")

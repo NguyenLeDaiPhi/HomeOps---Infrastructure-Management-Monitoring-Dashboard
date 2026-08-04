@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy import select, delete, func
 from database.connection import get_db_session
-from database.models import Host, HardwareMetric, DockerMetric, ConnectionEvent
+from database.models import Host, HardwareMetric, DockerMetric, ConnectionEvent, HttpRequestLog, HostHeartbeat
 
 logger = logging.getLogger("MetricsRepository")
 
@@ -289,12 +289,182 @@ class MetricsRepository:
             del_hw = session.execute(delete(HardwareMetric).where(HardwareMetric.timestamp < cutoff)).rowcount
             del_doc = session.execute(delete(DockerMetric).where(DockerMetric.timestamp < cutoff)).rowcount
             del_ev = session.execute(delete(ConnectionEvent).where(ConnectionEvent.timestamp < cutoff)).rowcount
+            del_http = session.execute(delete(HttpRequestLog).where(HttpRequestLog.timestamp < cutoff)).rowcount
             logger.info(
                 f"Purged records older than {retention_days} days (cutoff: {cutoff}): "
-                f"HW={del_hw}, Docker={del_doc}, Events={del_ev}"
+                f"HW={del_hw}, Docker={del_doc}, Events={del_ev}, HTTP={del_http}"
             )
             return {
                 "hardware_deleted": del_hw,
                 "docker_deleted": del_doc,
                 "events_deleted": del_ev,
+                "http_deleted": del_http,
             }
+
+
+class HttpRequestRepository:
+    """Repository for HTTP request log persistence and queries.
+
+    All public methods catch exceptions internally and log errors
+    so that database failures never crash the API server.
+    """
+
+    @staticmethod
+    def save_http_request(data: Dict[str, Any]) -> Optional[HttpRequestLog]:
+        """Persists a single HTTP request log record.
+
+        Args:
+            data: Dict containing request_id, timestamp, client_ip, method,
+                  path, status_code, latency_ms, user_agent, bytes_in, bytes_out.
+
+        Returns:
+            The created HttpRequestLog instance, or None on failure.
+        """
+        if not isinstance(data, dict):
+            logger.warning("Skipping invalid HTTP request log payload: not a dict")
+            return None
+
+        try:
+            ts = parse_timestamp(data.get("timestamp"))
+
+            with get_db_session() as session:
+                log_entry = HttpRequestLog(
+                    request_id=data.get("request_id", ""),
+                    timestamp=ts,
+                    client_ip=data.get("client_ip"),
+                    method=data.get("method"),
+                    path=data.get("path"),
+                    status_code=data.get("status_code"),
+                    latency_ms=data.get("latency_ms"),
+                    user_agent=data.get("user_agent"),
+                    bytes_in=data.get("bytes_in"),
+                    bytes_out=data.get("bytes_out"),
+                )
+                session.add(log_entry)
+                session.flush()
+                session.refresh(log_entry)
+                return log_entry
+        except Exception as e:
+            logger.error(f"Error persisting HTTP request log: {e}")
+            return None
+
+    @staticmethod
+    def get_recent_requests(limit: int = 100) -> List[Dict[str, Any]]:
+        """Returns the most recent HTTP request logs, ordered newest-first.
+
+        Args:
+            limit: Maximum number of records to return (default 100).
+
+        Returns:
+            List of dicts with request log fields.
+        """
+        try:
+            with get_db_session() as session:
+                stmt = (
+                    select(HttpRequestLog)
+                    .order_by(HttpRequestLog.timestamp.desc())
+                    .limit(limit)
+                )
+                results = session.scalars(stmt).all()
+                return [HttpRequestRepository._row_to_dict(row) for row in results]
+        except Exception as e:
+            logger.error(f"Error querying recent HTTP requests: {e}")
+            return []
+
+    @staticmethod
+    def get_http_history(
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Returns HTTP request logs within a time range, ordered chronologically.
+
+        Args:
+            start: ISO-8601 start timestamp (inclusive). None = no lower bound.
+            end: ISO-8601 end timestamp (inclusive). None = no upper bound.
+            limit: Maximum number of records to return (default 100).
+
+        Returns:
+            List of dicts with request log fields, ordered ascending by timestamp.
+        """
+        try:
+            start_dt = parse_timestamp(start) if start else None
+            end_dt = parse_timestamp(end) if end else None
+
+            with get_db_session() as session:
+                stmt = select(HttpRequestLog)
+
+                if start_dt:
+                    stmt = stmt.where(HttpRequestLog.timestamp >= start_dt)
+                if end_dt:
+                    stmt = stmt.where(HttpRequestLog.timestamp <= end_dt)
+
+                stmt = stmt.order_by(HttpRequestLog.timestamp.asc()).limit(limit)
+                results = session.scalars(stmt).all()
+                return [HttpRequestRepository._row_to_dict(row) for row in results]
+        except Exception as e:
+            logger.error(f"Error querying HTTP history: {e}")
+            return []
+
+    @staticmethod
+    def _row_to_dict(row: HttpRequestLog) -> Dict[str, Any]:
+        """Converts an HttpRequestLog ORM instance to a plain dict."""
+        return {
+            "id": row.id,
+            "request_id": row.request_id,
+            "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            "client_ip": row.client_ip,
+            "method": row.method,
+            "path": row.path,
+            "status_code": row.status_code,
+            "latency_ms": float(row.latency_ms) if row.latency_ms is not None else None,
+            "user_agent": row.user_agent,
+            "bytes_in": row.bytes_in,
+            "bytes_out": row.bytes_out,
+        }
+
+
+class HeartbeatRepository:
+    """Repository for managing host heartbeat liveness records in PostgreSQL."""
+
+    @staticmethod
+    def update_host_heartbeat(hostname: str, status: str = "ONLINE", timestamp_val: Any = None) -> Optional[HostHeartbeat]:
+        """Saves or updates the latest heartbeat timestamp and status for a given host."""
+        try:
+            ts = parse_timestamp(timestamp_val)
+            with get_db_session() as session:
+                host = MetricsRepository.get_or_create_host(session, hostname)
+                stmt = select(HostHeartbeat).where(HostHeartbeat.host_id == host.id)
+                hb = session.scalar(stmt)
+                if not hb:
+                    hb = HostHeartbeat(host_id=host.id, last_heartbeat=ts, status=status)
+                    session.add(hb)
+                else:
+                    hb.last_heartbeat = ts
+                    hb.status = status
+                session.flush()
+                session.refresh(hb)
+                return hb
+        except Exception as e:
+            logger.error(f"Error persisting host heartbeat for {hostname}: {e}")
+            return None
+
+    @staticmethod
+    def get_host_statuses() -> List[Dict[str, Any]]:
+        """Returns the latest status and heartbeat timestamp for all recorded hosts."""
+        try:
+            with get_db_session() as session:
+                stmt = select(HostHeartbeat, Host.hostname).join(Host, HostHeartbeat.host_id == Host.id)
+                results = session.execute(stmt).all()
+                output = []
+                for hb, hostname in results:
+                    output.append({
+                        "hostname": hostname,
+                        "status": hb.status,
+                        "last_heartbeat": hb.last_heartbeat.isoformat() if hb.last_heartbeat else None
+                    })
+                return output
+        except Exception as e:
+            logger.error(f"Error querying host statuses: {e}")
+            return []
+

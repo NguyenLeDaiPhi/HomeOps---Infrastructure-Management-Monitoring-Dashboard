@@ -22,8 +22,9 @@ import uvicorn
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config import WindowsConfig
-from windows_listen.listener import global_state
-from database.repositories import MetricsRepository, parse_timestamp
+from windows_listen.listener import global_state, broadcast_ws_message
+from database.repositories import MetricsRepository, HttpRequestRepository, HeartbeatRepository, parse_timestamp
+from middleware.http_monitor import HttpMonitorMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# HTTP Request Monitoring Middleware — logs every request to PostgreSQL & broadcasts via WebSocket
+app.add_middleware(
+    HttpMonitorMiddleware,
+    save_fn=HttpRequestRepository.save_http_request,
+    broadcast_fn=broadcast_ws_message,
 )
 
 
@@ -183,6 +191,63 @@ async def get_historical_summary(
         "host_filter": host,
         "summary": summary,
     }
+
+
+# ==========================================
+# HTTP REQUEST MONITORING API ENDPOINTS
+# ==========================================
+
+@app.get("/api/v1/http/recent")
+async def get_recent_http_requests(
+    limit: int = Query(100, ge=1, le=1000, description="Max records to return"),
+):
+    """Returns the most recent HTTP request logs, ordered newest-first."""
+    requests = HttpRequestRepository.get_recent_requests(limit=limit)
+    return {
+        "status": "success",
+        "count": len(requests),
+        "data": requests,
+    }
+
+
+@app.get("/api/v1/http/history")
+async def get_http_request_history(
+    start: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
+    end: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
+    limit: int = Query(100, ge=1, le=1000, description="Max records to return"),
+):
+    """Returns HTTP request logs within a time range, ordered chronologically."""
+    requests = HttpRequestRepository.get_http_history(start=start, end=end, limit=limit)
+    return {
+        "status": "success",
+        "count": len(requests),
+        "data": requests,
+    }
+
+
+# ==========================================
+# HEARTBEAT & HOST STATUS API ENDPOINTS
+# ==========================================
+
+@app.get("/api/v1/hosts/status")
+async def get_host_statuses():
+    """Returns the current status (ONLINE/OFFLINE) and last heartbeat timestamp for all hosts."""
+    state_hosts = global_state.get_host_statuses()
+    if state_hosts:
+        return state_hosts
+
+    db_hosts = HeartbeatRepository.get_host_statuses()
+    if db_hosts:
+        return db_hosts
+
+    snapshot = global_state.get_snapshot()
+    return [
+        {
+            "hostname": snapshot.get("hostname", "kali-vm"),
+            "status": snapshot.get("agent_status", "OFFLINE"),
+            "last_heartbeat": snapshot.get("last_updated")
+        }
+    ]
 
 
 # Get Cached Docker State

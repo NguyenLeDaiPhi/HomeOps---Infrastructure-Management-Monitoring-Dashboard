@@ -1021,6 +1021,301 @@
 .text-dim { color: var(--text-dim); }
 .text-green { color: var(--accent-green); }
 .text-warning { color: var(--accent-warning); }
+.text-cyan { color: var(--primary-cyan); }
 .block { display: block; }
 .text-center { text-align: center; }
 .max-h-600 { max-height: 520px; }
+
+/* ============================================
+   HTTP Request Monitoring Page Styles
+   ============================================ */
+
+/* Summary Stats Row */
+.http-summary-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.http-stat-card {
+  flex: 1;
+  min-width: 150px;
+  background: var(--bg-card);
+  backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.http-stat-card:hover {
+  border-color: rgba(0, 240, 255, 0.2);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.06);
+}
+
+.http-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.http-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* HTTP Method Badges */
+.http-method-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+  min-width: 56px;
+}
+
+.method-get {
+  background: rgba(0, 240, 255, 0.15);
+  color: var(--primary-cyan);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+}
+
+.method-post {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.method-put {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.method-patch {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-purple);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.method-delete {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.method-head {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.method-options {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* HTTP Status Code Badges */
+.http-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 3px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  text-align: center;
+  min-width: 40px;
+}
+
+.http-status-2xx {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.http-status-3xx {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary-blue);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.http-status-4xx {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.http-status-5xx {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.15);
+}
+
+.http-status-unknown {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+}
+
+/* HTTP Request Table */
+.http-table-wrapper {
+  max-height: 560px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+.http-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+
+.http-table th {
+  position: sticky;
+  top: 0;
+  background: #0f1626;
+  padding: 10px 14px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+  z-index: 10;
+}
+
+.http-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  vertical-align: middle;
+}
+
+.http-table tr:hover td {
+  background: rgba(0, 240, 255, 0.03);
+}
+
+.http-cell-time {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.http-date-dim {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.http-cell-path {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+/* Row entrance animation */
+@keyframes httpRowIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-http-row-in {
+  animation: httpRowIn 0.25s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .http-summary-row {
+    flex-direction: column;
+  }
+
+  .http-stat-card {
+    min-width: 100%;
+  }
+
+  .http-cell-path {
+    max-width: 160px;
+  }
+}
+
+/* =============================================
+   HEARTBEAT & HOST STATUS PANEL STYLES
+   ============================================= */
+
+.host-status-table th {
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 10px 16px;
+}
+
+.host-status-row td {
+  padding: 14px 16px;
+  vertical-align: middle;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-pill.online {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-pill.offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulseHeartbeat 1.5s ease-in-out infinite;
+}
+
+.status-pill.offline .pulse-dot {
+  animation: none;
+  opacity: 0.5;
+}
+
+@keyframes pulseHeartbeat {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+

@@ -59,6 +59,12 @@ export function Sidebar({ collapsed, onToggle }) {
       badge: null,
     },
     {
+      path: '/http-monitor',
+      label: 'HTTP Monitoring',
+      icon: '🌍',
+      badge: null,
+    },
+    {
       path: '/settings',
       label: 'Settings',
       icon: '🔧',
