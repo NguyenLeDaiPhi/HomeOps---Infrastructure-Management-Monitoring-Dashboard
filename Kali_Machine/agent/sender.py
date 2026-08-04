@@ -42,13 +42,42 @@ except Exception as e:
     logger.warning(f"Docker module failed to load: {e} — Docker telemetry disabled.")
 
 
+sock_lock = threading.Lock()
+
+
 def send_framed_json(sock: socket.socket, payload: dict) -> None:
     """
     Encodes JSON payload and sends it over TCP socket preceded by a 4-byte big-endian length header.
+    Thread-safe socket writing protected by sock_lock.
     """
     message_bytes = json.dumps(payload).encode('utf-8')
     header = struct.pack("!I", len(message_bytes))
-    sock.sendall(header + message_bytes)
+    with sock_lock:
+        sock.sendall(header + message_bytes)
+
+
+def send_heartbeat(sock: socket.socket) -> None:
+    """Transmits a periodic liveness heartbeat message."""
+    payload = {
+        "type": "HEARTBEAT",
+        "hostname": socket.gethostname(),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+    send_framed_json(sock, payload)
+    logger.debug("Heartbeat signal transmitted")
+
+
+def heartbeat_worker(sock: socket.socket, stop_event: threading.Event) -> None:
+    """Background worker sending periodic heartbeats over the active TCP connection."""
+    logger.info(f"Heartbeat thread started (interval: {KaliConfig.HEARTBEAT_INTERVAL}s).")
+    while not stop_event.is_set():
+        try:
+            send_heartbeat(sock)
+        except Exception as e:
+            logger.warning(f"Heartbeat delivery failed: {e}")
+            break
+        stop_event.wait(KaliConfig.HEARTBEAT_INTERVAL)
+
 
 def get_base_payload(message_type: str) -> dict:
     return {
@@ -181,35 +210,49 @@ def run_agent():
             if _docker_available:
                 send_docker_telemetry(sock)
 
+            # Start periodic heartbeat thread over active TCP connection
+            hb_stop_event = threading.Event()
+            hb_thread = threading.Thread(
+                target=heartbeat_worker,
+                args=(sock, hb_stop_event),
+                daemon=True,
+                name="HeartbeatSender"
+            )
+            hb_thread.start()
+
             # Track separate Docker telemetry interval
             last_docker_send = time.time()
 
-            while True:
-                send_hardware_metrics(sock)
+            try:
+                while True:
+                    send_hardware_metrics(sock)
 
-                # Check for dynamic state changes
-                net_events = network_monitor.check_changes()
-                if net_events:
-                    send_network_update(sock, net_events)
+                    # Check for dynamic state changes
+                    net_events = network_monitor.check_changes()
+                    if net_events:
+                        send_network_update(sock, net_events)
 
-                proc_events = process_monitor.check_changes()
-                if proc_events:
-                    send_process_update(sock, proc_events)
+                    proc_events = process_monitor.check_changes()
+                    if proc_events:
+                        send_process_update(sock, proc_events)
 
-                # Docker telemetry on its own interval (heavier collection)
-                if _docker_available:
-                    now = time.time()
-                    if now - last_docker_send >= KaliConfig.DOCKER_TELEMETRY_INTERVAL:
-                        send_docker_telemetry(sock)
-                        last_docker_send = now
+                    # Docker telemetry on its own interval (heavier collection)
+                    if _docker_available:
+                        now = time.time()
+                        if now - last_docker_send >= KaliConfig.DOCKER_TELEMETRY_INTERVAL:
+                            send_docker_telemetry(sock)
+                            last_docker_send = now
 
-                    # Docker events on every tick (lightweight diff)
-                    if docker_monitor:
-                        docker_events = docker_monitor.check_changes()
-                        if docker_events:
-                            send_docker_events(sock, docker_events)
+                        # Docker events on every tick (lightweight diff)
+                        if docker_monitor:
+                            docker_events = docker_monitor.check_changes()
+                            if docker_events:
+                                send_docker_events(sock, docker_events)
 
-                time.sleep(KaliConfig.METRIC_INTERVAL)
+                    time.sleep(KaliConfig.METRIC_INTERVAL)
+            finally:
+                hb_stop_event.set()
+                hb_thread.join(timeout=1.0)
 
         except (ConnectionRefusedError, socket.timeout):
             logger.warning(f"Connection refused by target {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}. Retrying in {KaliConfig.RECONNECT_DELAY}s...")
