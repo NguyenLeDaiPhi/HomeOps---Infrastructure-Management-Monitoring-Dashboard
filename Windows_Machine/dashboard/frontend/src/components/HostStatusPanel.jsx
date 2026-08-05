@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { useHostStatus } from '../hooks/useHostStatus';
 import { SectionCard } from './layout/SectionCard';
 
@@ -24,7 +24,7 @@ function formatTimestamp(isoStr) {
   }
 }
 
-export function HostStatusPanel() {
+function HostStatusPanelComponent() {
   const { hosts, loading } = useHostStatus();
 
   return (
@@ -85,3 +85,5 @@ export function HostStatusPanel() {
     </SectionCard>
   );
 }
+
+export const HostStatusPanel = memo(HostStatusPanelComponent);

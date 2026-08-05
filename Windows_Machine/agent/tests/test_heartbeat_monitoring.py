@@ -118,6 +118,38 @@ class TestStateManagerHeartbeat:
         assert snapshot["hosts"]["kali-vm"]["status"] == "ONLINE"
         assert snapshot["hosts"]["kali-vm"]["last_heartbeat"] == ts
 
+    def test_update_heartbeat_preserves_existing_host_data(self):
+        """Existing host metadata should not be overwritten by heartbeat updates."""
+        sm = self._make_state_manager()
+        ts_old = datetime.now(timezone.utc).isoformat()
+        sm.hosts["kali-vm"] = {
+            "status": "OFFLINE",
+            "last_heartbeat": ts_old,
+            "last_heartbeat_dt": parse_timestamp(ts_old),
+            "foo": "bar"
+        }
+
+        ts_new = datetime.now(timezone.utc).isoformat()
+        sm.update_heartbeat("kali-vm", ts_new)
+
+        assert sm.hosts["kali-vm"]["foo"] == "bar"
+        assert sm.hosts["kali-vm"]["status"] == "ONLINE"
+        assert sm.hosts["kali-vm"]["last_heartbeat"] == ts_new
+
+    def test_update_hardware_preserves_existing_heartbeat(self):
+        """Hardware metric updates must not overwrite heartbeat timestamp data."""
+        from windows_listen.listener import StateManager
+
+        sm = StateManager()
+        heartbeat_ts = datetime.now(timezone.utc).isoformat()
+        sm.update_heartbeat("kali-vm", heartbeat_ts)
+
+        old_dt = sm.hosts["kali-vm"]["last_heartbeat_dt"]
+        sm.update_hardware("kali-vm", datetime.now(timezone.utc).isoformat(), {}, {}, [])
+
+        assert sm.hosts["kali-vm"]["last_heartbeat"] == heartbeat_ts
+        assert sm.hosts["kali-vm"]["last_heartbeat_dt"] == old_dt
+
 
 # =============================================
 # AC-12.1: Heartbeat sent every configured interval
@@ -236,9 +268,16 @@ class TestAC122HeartbeatStored:
         HeartbeatRepository.update_host_heartbeat("kali-vm", "ONLINE", ts)
         statuses = HeartbeatRepository.get_host_statuses()
         kali = next(s for s in statuses if s["hostname"] == "kali-vm")
-        # The stored timestamp should be a valid ISO string
         stored_dt = parse_timestamp(kali["last_heartbeat"])
         assert stored_dt is not None
+
+    def test_parse_timestamp_handles_iso_z_format(self):
+        """parse_timestamp should accept ISO-8601 UTC with Z and return timezone-aware UTC datetime."""
+        ts = "2026-08-05T04:39:05Z"
+        parsed = parse_timestamp(ts)
+        assert parsed.tzinfo is not None
+        assert parsed.utcoffset().total_seconds() == 0
+        assert parsed.isoformat() == "2026-08-05T04:39:05+00:00"
 
 
 # =============================================
@@ -295,6 +334,23 @@ class TestAC123MissingHeartbeatOffline:
         timed_out = sm.check_heartbeat_timeouts(timeout_seconds=30.0)
         assert "kali-vm" in timed_out
         assert "ubuntu-server" not in timed_out
+
+    def test_repeated_timeout_checks_do_not_repeat_offline_transition(self):
+        """Once a host is marked OFFLINE, subsequent timeout checks should not report it again."""
+        from windows_listen.listener import StateManager
+
+        sm = StateManager()
+        old_ts = (datetime.now(timezone.utc) - timedelta(seconds=35)).isoformat()
+        sm.update_heartbeat("kali-vm", old_ts)
+
+        first_timed_out = sm.check_heartbeat_timeouts(timeout_seconds=30.0)
+        assert "kali-vm" in first_timed_out
+
+        second_timed_out = sm.check_heartbeat_timeouts(timeout_seconds=30.0)
+        assert second_timed_out == []
+
+        statuses = sm.get_host_statuses()
+        assert statuses[0]["status"] == "OFFLINE"
 
     def test_database_status_updated_to_offline(self):
         """HeartbeatRepository should allow setting status to OFFLINE."""
