@@ -1,10 +1,10 @@
 import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
 
 const WS_URL =
-  import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+  import.meta.env.VITE_WS_URL || 'ws://192.168.2.1:8000/ws';
 
 const API_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:8000/api/state';
+  import.meta.env.VITE_API_URL || 'http://192.168.2.1:8000/api/state';
 
 const initialTelemetry = {
   agent_status: 'OFFLINE',

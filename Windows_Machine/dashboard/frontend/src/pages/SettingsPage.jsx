@@ -6,13 +6,13 @@ import { ActionButton } from '../components/shared/ActionButton';
 
 export function SettingsPage() {
   const [wsUrl, setWsUrl] = useState(
-    import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+    import.meta.env.VITE_WS_URL || 'ws://192.168.2.1:8000/ws'
   );
   const [apiUrl, setApiUrl] = useState(
-    import.meta.env.VITE_API_URL || 'http://localhost:8000/api/state'
+    import.meta.env.VITE_API_URL || 'http://192.168.2.1:8000/api/state'
   );
   const [dockerApiUrl, setDockerApiUrl] = useState(
-    import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker'
+    import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker'
   );
   const [kaliTarget, setKaliTarget] = useState('192.168.1.150');
   const [refreshInterval, setRefreshInterval] = useState(2000);
@@ -106,9 +106,8 @@ export function SettingsPage() {
 
             {testResult && (
               <div
-                className={`alert-item margin-top-3 ${
-                  testResult.success ? 'event-success' : 'event-alert'
-                }`}
+                className={`alert-item margin-top-3 ${testResult.success ? 'event-success' : 'event-alert'
+                  }`}
               >
                 <div className="alert-content">
                   <StatusBadge

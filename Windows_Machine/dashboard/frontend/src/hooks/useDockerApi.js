@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 
 const COMMAND_GATEWAY_URL =
-  import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
+  import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
 
 export function useDockerApi(baseUrl = COMMAND_GATEWAY_URL) {
   const [loadingMap, setLoadingMap] = useState({});

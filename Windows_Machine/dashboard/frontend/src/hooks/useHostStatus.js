@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
+const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
 const HOSTS_STATUS_API = DOCKER_API.replace('/api/v1/docker', '/api/v1/hosts/status');
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://192.168.2.1:8000/ws';
 
 export function useHostStatus() {
   const [hosts, setHosts] = useState([]);
@@ -65,7 +65,7 @@ export function useHostStatus() {
         }
       };
 
-      ws.onerror = () => {};
+      ws.onerror = () => { };
       ws.onclose = () => {
         setTimeout(() => {
           if (wsRef.current === ws) {
