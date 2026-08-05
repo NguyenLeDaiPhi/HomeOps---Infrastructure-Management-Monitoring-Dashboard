@@ -52,9 +52,9 @@ services:
       - ./dashboard/frontend:/app
       - /app/node_modules
     environment:
-      VITE_WS_URL: ws://localhost:8000/ws
-      VITE_API_URL: http://localhost:8000/api/state
-      VITE_DOCKER_API_URL: http://localhost:8500/api/v1/docker
+      VITE_WS_URL: ws://192.168.2.1:8000/ws
+      VITE_API_URL: http://192.168.2.1:8000/api/state
+      VITE_DOCKER_API_URL: http://192.168.2.1:8500/api/v1/docker
     ports:
       - "5173:5173"
     depends_on:
