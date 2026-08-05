@@ -10,7 +10,7 @@ import threading
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import KaliConfig
+from config.config import KaliConfig
 from collector.cpu_collector import cpu_stats
 from collector.ram_collector import ram_stats
 from collector.disk_collector import disk_stats
