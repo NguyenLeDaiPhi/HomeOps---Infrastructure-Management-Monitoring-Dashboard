@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from collector.process_collector import process_snapshot
-from config import KaliConfig
+from config.config import KaliConfig
 
 class ProcessMonitor:
     """
