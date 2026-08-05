@@ -83,7 +83,7 @@ def get_base_payload(message_type: str) -> dict:
     return {
         "type": message_type,
         "hostname": socket.gethostname(),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }
 
 def send_hardware_metrics(sock: socket.socket) -> None:

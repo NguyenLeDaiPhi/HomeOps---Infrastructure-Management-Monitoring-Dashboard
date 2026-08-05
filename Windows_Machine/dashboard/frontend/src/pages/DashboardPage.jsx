@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTelemetry } from '../context/TelemetryContext';
 import { PageContainer } from '../components/layout/PageContainer';
 import { MetricCard } from '../components/shared/MetricCard';
@@ -10,25 +10,30 @@ import { HostStatusPanel } from '../components/HostStatusPanel';
 
 export function DashboardPage() {
   const { telemetry } = useTelemetry();
-  const hardware = telemetry.hardware || {};
-  const cpu = hardware.cpu || {};
-  const ram = hardware.ram || {};
-  const disks = hardware.disk || [];
+
+  const hardware = useMemo(() => telemetry.hardware || {}, [telemetry.hardware]);
+  const cpu = useMemo(() => hardware.cpu || {}, [hardware.cpu]);
+  const ram = useMemo(() => hardware.ram || {}, [hardware.ram]);
+  const disks = useMemo(() => hardware.disk || [], [hardware.disk]);
   const mainDisk = disks[0] || {};
-  const docker = telemetry.docker || {};
-  const dockerInfo = docker.docker_info || {};
+  const docker = useMemo(() => telemetry.docker || {}, [telemetry.docker]);
+  const dockerInfo = useMemo(() => docker.docker_info || {}, [docker.docker_info]);
   const alerts = telemetry.alerts || [];
   const networkMap = telemetry.network || {};
-  const netInterfaces = Object.values(networkMap);
+  const netInterfaces = useMemo(() => Object.values(networkMap), [networkMap]);
 
   const cpuPercent = cpu.total_cpu ?? 0;
   const ramPercent = ram.percent ?? 0;
   const diskPercent = mainDisk.usage_percent ?? 0;
 
   // Calculate Overall Host Health Score
-  const averageUsage = (cpuPercent + ramPercent + diskPercent) / 3;
-  const healthStatus = averageUsage > 85 ? 'DEGRADED' : averageUsage > 60 ? 'WARNING' : 'HEALTHY';
-  const healthBadgeType = averageUsage > 85 ? 'idle' : averageUsage > 60 ? 'warning' : 'active';
+  const { healthStatus, healthBadgeType } = useMemo(() => {
+    const averageUsage = (cpuPercent + ramPercent + diskPercent) / 3;
+    return {
+      healthStatus: averageUsage > 85 ? 'DEGRADED' : averageUsage > 60 ? 'WARNING' : 'HEALTHY',
+      healthBadgeType: averageUsage > 85 ? 'idle' : averageUsage > 60 ? 'warning' : 'active',
+    };
+  }, [cpuPercent, ramPercent, diskPercent]);
 
   return (
     <PageContainer

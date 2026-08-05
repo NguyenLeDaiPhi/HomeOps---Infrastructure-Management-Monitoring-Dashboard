@@ -19,8 +19,9 @@ def parse_timestamp(ts_val: Any) -> datetime:
         return datetime.fromtimestamp(ts_val, tz=timezone.utc)
     if isinstance(ts_val, str):
         try:
-            # Handle standard ISO formats
-            clean_ts = ts_val.replace('Z', '+00:00')
+            clean_ts = ts_val.strip()
+            if clean_ts.endswith('Z'):
+                clean_ts = clean_ts[:-1] + '+00:00'
             dt = datetime.fromisoformat(clean_ts)
             if dt.tzinfo is None:
                 return dt.replace(tzinfo=timezone.utc)

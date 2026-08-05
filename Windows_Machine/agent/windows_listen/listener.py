@@ -60,6 +60,7 @@ class StateManager:
             "alerts": [],
             "hosts": {}
         }
+        logger.info(f"StateManager initialized id={id(self)} hosts_id={id(self.hosts)}")
 
     def update_heartbeat(self, hostname: str, timestamp: str) -> bool:
         with self.lock:
@@ -67,20 +68,33 @@ class StateManager:
             prev_info = self.hosts.get(hostname, {})
             prev_status = prev_info.get("status", "OFFLINE")
 
-            self.hosts[hostname] = {
+            host_info = dict(prev_info)
+            host_info.update({
                 "status": "ONLINE",
                 "last_heartbeat": timestamp,
                 "last_heartbeat_dt": ts_dt
-            }
+            })
+            self.hosts[hostname] = host_info
+
             if "hosts" not in self.state:
                 self.state["hosts"] = {}
-            self.state["hosts"][hostname] = {
+
+            host_state = dict(self.state["hosts"].get(hostname, {}))
+            host_state.update({
                 "status": "ONLINE",
                 "last_heartbeat": timestamp
-            }
-            self.state["agent_status"] = "ONLINE"
-            self.state["hostname"] = hostname
-            self.state["last_updated"] = timestamp
+            })
+            self.state["hosts"][hostname] = host_state
+
+            if self.state.get("hostname", "Unknown") in ("Unknown", hostname):
+                self.state["agent_status"] = "ONLINE"
+                self.state["hostname"] = hostname
+                self.state["last_updated"] = timestamp
+
+            logger.info(f"StateManager id={id(self)} update_heartbeat host={hostname} host_obj_id={id(host_info)} last_heartbeat_dt_obj_id={id(host_info['last_heartbeat_dt'])}")
+            logger.info(f"Heartbeat received from {hostname}: {timestamp}")
+            logger.info(f"Parsed heartbeat datetime: {ts_dt.isoformat()}")
+            logger.info(f"Stored heartbeat dt for {hostname}: {host_info['last_heartbeat_dt'].isoformat()}")
 
             return prev_status != "ONLINE"
 
@@ -113,15 +127,27 @@ class StateManager:
         timed_out_hosts = []
         with self.lock:
             for h_name, h_info in self.hosts.items():
-                if h_info.get("status") == "ONLINE":
-                    hb_dt = h_info.get("last_heartbeat_dt")
-                    if hb_dt and (now - hb_dt).total_seconds() > timeout_seconds:
-                        h_info["status"] = "OFFLINE"
-                        if "hosts" in self.state and h_name in self.state["hosts"]:
-                            self.state["hosts"][h_name]["status"] = "OFFLINE"
-                        if self.state.get("hostname") == h_name:
-                            self.state["agent_status"] = "OFFLINE"
-                        timed_out_hosts.append(h_name)
+                if h_info.get("status") != "ONLINE":
+                    continue
+
+                hb_dt = h_info.get("last_heartbeat_dt")
+                if hb_dt is None:
+                    logger.warning(f"Heartbeat timeout check skipped for {h_name}: no stored datetime.")
+                    continue
+
+                age_seconds = (now - hb_dt).total_seconds()
+                logger.info(
+                    f"StateManager id={id(self)} check_heartbeat_timeouts host={h_name} host_obj_id={id(h_info)} "
+                    f"last_heartbeat_dt_obj_id={id(hb_dt)} age={age_seconds:.1f}s"
+                )
+
+                if age_seconds > timeout_seconds:
+                    h_info["status"] = "OFFLINE"
+                    if "hosts" in self.state and h_name in self.state["hosts"]:
+                        self.state["hosts"][h_name]["status"] = "OFFLINE"
+                    if self.state.get("hostname") == h_name:
+                        self.state["agent_status"] = "OFFLINE"
+                    timed_out_hosts.append(h_name)
         return timed_out_hosts
 
     def get_host_statuses(self) -> List[Dict[str, Any]]:
@@ -145,18 +171,22 @@ class StateManager:
                 "ram": ram,
                 "disk": disk
             }
-            ts_dt = parse_timestamp(timestamp)
-            self.hosts[hostname] = {
-                "status": "ONLINE",
-                "last_heartbeat": timestamp,
-                "last_heartbeat_dt": ts_dt
-            }
+
+            host_info = self.hosts.setdefault(hostname, {})
+            host_info["status"] = "ONLINE"
+            if "last_heartbeat" not in host_info:
+                ts_dt = parse_timestamp(timestamp)
+                host_info["last_heartbeat"] = timestamp
+                host_info["last_heartbeat_dt"] = ts_dt
+
             if "hosts" not in self.state:
                 self.state["hosts"] = {}
-            self.state["hosts"][hostname] = {
+            host_state = dict(self.state["hosts"].get(hostname, {}))
+            host_state.update({
                 "status": "ONLINE",
-                "last_heartbeat": timestamp
-            }
+                "last_heartbeat": host_info.get("last_heartbeat")
+            })
+            self.state["hosts"][hostname] = host_state
 
     def update_network(self, hostname: str, timestamp: str, network: dict):
         with self.lock:
@@ -277,6 +307,7 @@ def recv_exact(sock: socket.socket, size: int) -> Optional[bytes]:
     return data
 
 def handle_payload(payload: dict, addr: tuple):
+    logger.info(f"handle_payload using StateManager id={id(global_state)} hosts_id={id(global_state.hosts)}")
     msg_type = payload.get("type")
     hostname = payload.get("hostname", "Unknown")
     timestamp = payload.get("timestamp", "N/A")
