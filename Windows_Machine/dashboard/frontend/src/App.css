@@ -398,6 +398,37 @@
   box-shadow: 0 0 6px var(--accent-green);
 }
 
+/* Login page specific: center the login card on the page */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: calc(100vh - 80px);
+  padding: 32px 16px;
+}
+
+.login-glass-card {
+  width: 420px;
+  max-width: calc(100% - 32px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--backdrop-blur);
+}
+
+.login-title {
+  margin: 0;
+}
+
+.login-subtitle {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .status-dot.inactive {
   background: var(--accent-danger);
 }
