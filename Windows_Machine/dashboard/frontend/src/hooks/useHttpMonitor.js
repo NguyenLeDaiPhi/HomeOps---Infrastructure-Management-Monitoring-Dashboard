@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { authFetch } from '../auth/api';
 
-const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
+const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
 const HTTP_API_BASE = DOCKER_API.replace('/api/v1/docker', '/api/v1/http');
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://192.168.2.1:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
 
 export function useHttpMonitor() {
   const [requests, setRequests] = useState([]);
@@ -16,7 +17,7 @@ export function useHttpMonitor() {
   // Fetch recent requests from REST API
   const fetchRecent = useCallback(async () => {
     try {
-      const res = await fetch(`${HTTP_API_BASE}/recent?limit=200`);
+      const res = await authFetch(`${HTTP_API_BASE}/recent?limit=200`);
       if (res.ok) {
         const json = await res.json();
         setRequests(json.data || []);

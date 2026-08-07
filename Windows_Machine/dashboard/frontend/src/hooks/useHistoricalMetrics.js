@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { authFetch } from '../auth/api';
 
-const API_BASE = import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
+const API_BASE = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
 const HISTORY_BASE = API_BASE.replace('/docker', '/history');
 
 export function useHistoricalMetrics() {
@@ -43,7 +44,7 @@ export function useHistoricalMetrics() {
       // 1. Fetch Summary
       const sumUrl = new URL(`${HISTORY_BASE}/summary`);
       if (hostFilter) sumUrl.searchParams.append('host', hostFilter);
-      const sumRes = await fetch(sumUrl.toString());
+      const sumRes = await authFetch(sumUrl.toString());
       if (sumRes.ok) {
         const sumData = await sumRes.json();
         if (sumData.summary) setSummary(sumData.summary);
@@ -55,7 +56,7 @@ export function useHistoricalMetrics() {
       if (startIso) hwUrl.searchParams.append('start', startIso);
       hwUrl.searchParams.append('limit', '200');
 
-      const hwRes = await fetch(hwUrl.toString());
+      const hwRes = await authFetch(hwUrl.toString());
       if (hwRes.ok) {
         const hwData = await hwRes.json();
         setHardwareHistory(hwData.data || []);
@@ -68,7 +69,7 @@ export function useHistoricalMetrics() {
       if (startIso) docUrl.searchParams.append('start', startIso);
       docUrl.searchParams.append('limit', '200');
 
-      const docRes = await fetch(docUrl.toString());
+      const docRes = await authFetch(docUrl.toString());
       if (docRes.ok) {
         const docData = await docRes.json();
         setDockerHistory(docData.data || []);

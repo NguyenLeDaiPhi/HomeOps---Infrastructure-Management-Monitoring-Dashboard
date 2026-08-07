@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { authFetch } from '../auth/api';
 
 const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
 const HOSTS_STATUS_API = DOCKER_API.replace('/api/v1/docker', '/api/v1/hosts/status');
@@ -11,7 +12,7 @@ export function useHostStatus() {
 
   const fetchHostStatus = useCallback(async () => {
     try {
-      const res = await fetch(HOSTS_STATUS_API);
+      const res = await authFetch(HOSTS_STATUS_API);
       if (res.ok) {
         const data = await res.json();
         setHosts(Array.isArray(data) ? data : [data]);
