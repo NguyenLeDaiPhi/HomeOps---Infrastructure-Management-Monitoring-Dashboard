@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
+import { authFetch } from '../auth/api';
 
 const WS_URL =
   import.meta.env.VITE_WS_URL || 'ws://192.168.2.1:8000/ws';
@@ -193,7 +194,12 @@ export function useWebSocket(
 
     function connectWebSocket() {
       try {
-        const ws = new WebSocket(wsUrl);
+        const token = localStorage.getItem('homeops_access_token');
+        const authenticatedWsUrl = token
+          ? `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+          : wsUrl;
+
+        const ws = new WebSocket(authenticatedWsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -267,7 +273,7 @@ export function useWebSocket(
 
     async function fetchState() {
       try {
-        const res = await fetch(fallbackPollUrl);
+        const res = await authFetch(fallbackPollUrl);
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {

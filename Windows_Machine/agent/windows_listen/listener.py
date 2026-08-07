@@ -9,6 +9,7 @@ import threading
 import time
 import hashlib
 import base64
+from urllib.parse import unquote
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional, Set, List
 
@@ -447,6 +448,39 @@ def handle_web_client(client_sock: socket.socket):
 
         # WebSocket Upgrade Handling
         if "Upgrade: websocket" in data or "Sec-WebSocket-Key" in data:
+            # Validate JWT authentication token from query string ?token=<JWT> or Authorization header
+            token = None
+            first_line = lines[0] if lines else ""
+            if "?" in first_line:
+                query_str = first_line.split("?")[1].split(" ")[0]
+                for param in query_str.split("&"):
+                    if param.startswith("token="):
+                        token = unquote(param.split("=", 1)[1])
+                        break
+
+            if not token:
+                for line in lines:
+                    if line.lower().startswith("authorization: bearer"):
+                        parts = line.split(":")
+                        if len(parts) >= 2:
+                            token = parts[1].replace("Bearer", "", 1).strip()
+                        break
+
+            if not token:
+                logger.warning("Rejected unauthenticated WebSocket connection request (missing token).")
+                client_sock.sendall(b"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n")
+                client_sock.close()
+                return
+
+            try:
+                from auth.dependencies import verify_ws_token
+                verify_ws_token(token)
+            except Exception as auth_err:
+                logger.warning(f"Rejected WebSocket connection request (invalid token): {auth_err}")
+                client_sock.sendall(b"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n")
+                client_sock.close()
+                return
+
             key = None
             for line in lines:
                 if line.lower().startswith("sec-websocket-key:"):

@@ -22,3 +22,9 @@ class WindowsConfig:
 
     # Database connection from Windows agent to database PostgreSQL
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://homeops:homeops@homeops-postgres:5432/homeops")
+
+    # JWT Authentication Settings
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "homeops-super-secret-jwt-key-2026")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    JWT_ALGORITHM: str = "HS256"

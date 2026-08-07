@@ -10,3 +10,6 @@ alembic>=1.13
 pydantic
 python-dotenv
 pytest
+PyJWT>=2.8.0
+bcrypt>=4.1.0
+passlib[bcrypt]>=1.7.4

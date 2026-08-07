@@ -25,3 +25,7 @@ class KaliConfig:
 
     # Allowed command origin IPs (comma-separated). Empty = allow all.
     ALLOWED_COMMAND_ORIGINS: str = os.getenv("ALLOWED_COMMAND_ORIGINS", "192.168.2.1")
+
+    # JWT Authentication Settings
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "homeops-super-secret-jwt-key-2026")
+    JWT_ALGORITHM: str = "HS256"

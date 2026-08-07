@@ -7,7 +7,7 @@ against the local Docker daemon via Docker SDK. Runs on port 8501.
 Flow: React Dashboard → Windows Gateway :8500 → This Server :8501 → Docker SDK → Docker Daemon
 
 Security:
-  - X-API-Key header validation
+  - JWT bearer token validation
   - Optional IP allowlist
 """
 
@@ -56,30 +56,68 @@ app = FastAPI(
 
 
 # ---------------------------------------------------------------------------
-# Middleware — API Key Validation
+# Middleware — JWT Token & API Key Validation
 # ---------------------------------------------------------------------------
 
+import jwt
+
 @app.middleware("http")
-async def validate_api_key(request: Request, call_next):
-    """Validates X-API-Key header on all /api/ routes."""
-    # Skip auth for health check
+async def validate_authentication(request: Request, call_next):
+    """Validates Authorization: Bearer <JWT> and checks role on all /api/ routes."""
     if request.url.path == "/health":
         return await call_next(request)
 
-    api_key = request.headers.get("X-API-Key")
-    if api_key != KaliConfig.API_KEY:
-        logger.warning(f"Unauthorized request from {request.client.host}: invalid API key")
-        return JSONResponse(
-            status_code=401,
-            content={
-                "status": "error",
-                "error_code": "UNAUTHORIZED",
-                "message": "Invalid or missing API key.",
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            },
-        )
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        try:
+            payload = jwt.decode(token, KaliConfig.JWT_SECRET, algorithms=[KaliConfig.JWT_ALGORITHM])
+            user_role = (payload.get("role") or "").lower()
+            if user_role not in {"admin", "operator"}:
+                logger.warning(f"Forbidden Kali container action attempted by role: {user_role}")
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "status": "error",
+                        "error_code": "FORBIDDEN",
+                        "message": f"Permission denied. Role '{user_role}' cannot execute container commands.",
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    },
+                )
+            return await call_next(request)
+        except jwt.ExpiredSignatureError:
+            logger.warning("Rejected expired JWT token on Kali command receiver.")
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "status": "error",
+                    "error_code": "TOKEN_EXPIRED",
+                    "message": "JWT access token has expired.",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+            )
+        except jwt.InvalidTokenError as e:
+            logger.warning(f"Rejected invalid JWT token on Kali command receiver: {e}")
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "status": "error",
+                    "error_code": "UNAUTHORIZED",
+                    "message": f"Invalid or malformed JWT token: {e}",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+            )
 
-    return await call_next(request)
+    logger.warning(f"Unauthorized request from {request.client.host}: missing/invalid Bearer JWT")
+    return JSONResponse(
+        status_code=401,
+        content={
+            "status": "error",
+            "error_code": "UNAUTHORIZED",
+            "message": "Invalid or missing Bearer token.",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

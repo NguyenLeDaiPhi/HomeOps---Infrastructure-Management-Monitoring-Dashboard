@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { authFetch } from '../auth/api';
 
 const COMMAND_GATEWAY_URL =
   import.meta.env.VITE_DOCKER_API_URL || 'http://192.168.2.1:8500/api/v1/docker';
@@ -25,19 +26,16 @@ export function useDockerApi(baseUrl = COMMAND_GATEWAY_URL) {
       setContainerLoading(containerId, action, true);
 
       try {
-        const response = await fetch(`${baseUrl}/containers/${containerId}/${action}`, {
+        const response = await authFetch(`${baseUrl}/containers/${containerId}/${action}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
         });
 
         const data = await response.json();
 
         if (!response.ok) {
           const errDetail = data.detail || data;
-          const msg = errDetail.message || `Failed to ${action} container`;
-          setActionError({ containerId, action, message: msg, code: errDetail.error_code });
+          const msg = typeof errDetail === 'string' ? errDetail : errDetail.message || `Failed to ${action} container`;
+          setActionError({ containerId, action, message: msg, code: errDetail.error_code || 'HTTP_ERROR' });
           return { success: false, message: msg };
         }
 
@@ -57,7 +55,7 @@ export function useDockerApi(baseUrl = COMMAND_GATEWAY_URL) {
     async (containerId, containerName, tail = 100) => {
       setLogsModal({ open: true, containerName, logs: '', loading: true });
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${baseUrl}/containers/${containerId}/logs?tail=${tail}`
         );
         const data = await response.json();
