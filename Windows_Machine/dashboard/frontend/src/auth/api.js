@@ -1,5 +1,6 @@
+const ORIGIN = `${window.location.protocol}//${window.location.host}`;
 const COMMAND_GATEWAY_URL =
-  import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
+  import.meta.env.VITE_DOCKER_API_URL || `${ORIGIN}/api/v1/docker`;
 
 export const AUTH_API_BASE = COMMAND_GATEWAY_URL.replace('/api/v1/docker', '/auth');
 
