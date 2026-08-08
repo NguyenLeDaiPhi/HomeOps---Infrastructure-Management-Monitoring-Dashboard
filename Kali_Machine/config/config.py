@@ -2,7 +2,7 @@ import os
 
 class KaliConfig:
     """Configuration settings for the Kali Linux telemetry agent."""
-    WINDOWS_IP: str = os.getenv("WINDOWS_IP", "192.168.2.1")
+    WINDOWS_IP: str = os.getenv("WINDOWS_IP", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "5003"))
     METRIC_INTERVAL: float = float(os.getenv("METRIC_INTERVAL", "5.0"))
     HEARTBEAT_INTERVAL: float = float(os.getenv("HEARTBEAT_INTERVAL", "5.0"))
@@ -24,7 +24,7 @@ class KaliConfig:
     API_KEY: str = os.getenv("HOMEOPS_API_KEY", "homeops-dev-key-2026")
 
     # Allowed command origin IPs (comma-separated). Empty = allow all.
-    ALLOWED_COMMAND_ORIGINS: str = os.getenv("ALLOWED_COMMAND_ORIGINS", "192.168.2.1")
+    ALLOWED_COMMAND_ORIGINS: str = os.getenv("ALLOWED_COMMAND_ORIGINS", "0.0.0.0")
 
     # JWT Authentication Settings
     JWT_SECRET: str = os.getenv("JWT_SECRET", "homeops-super-secret-jwt-key-2026")

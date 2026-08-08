@@ -1,6 +1,6 @@
 # HomeOps - Infrastructure Management & Monitoring Dashboard
 
-An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Virtual Machine (192.168.2.2)** and a **Windows Host Machine (192.168.2.1)** over host-only networking.
+An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Virtual Machine (192.168.2.2)** and a **Windows Host Machine (0.0.0.0)** over host-only networking.
 
 ---
 
@@ -51,7 +51,7 @@ python agent/listener.py
 cd Kali_Machine
 python3 agent/sender.py
 ```
-*Connects to `192.168.2.1:5003` and starts transmitting telemetry.*
+*Connects to `0.0.0.0:5003` and starts transmitting telemetry.*
 
 ### 3. Launch React Dashboard (Windows Machine)
 ```powershell

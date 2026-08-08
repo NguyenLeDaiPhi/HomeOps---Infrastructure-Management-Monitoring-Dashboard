@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authFetch } from '../auth/api';
 
-const API_BASE = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
+const ORIGIN = `${window.location.protocol}//${window.location.host}`;
+const API_BASE = import.meta.env.VITE_DOCKER_API_URL || `${ORIGIN}/api/v1/docker`;
 const HISTORY_BASE = API_BASE.replace('/docker', '/history');
 
 export function useHistoricalMetrics() {

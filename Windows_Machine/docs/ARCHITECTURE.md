@@ -1,7 +1,7 @@
 # HomeOps Telemetry & Monitoring System Architecture
 
 ## Overview
-HomeOps is an enterprise-grade infrastructure monitoring solution designed for host-only Virtual Machine telemetry streaming. It enables real-time metrics collection from a **Kali Linux Agent VM (192.168.2.2)** to a **Windows Host Listener Server (192.168.2.1)** and displays interactive metrics in a modern Web dashboard.
+HomeOps is an enterprise-grade infrastructure monitoring solution designed for host-only Virtual Machine telemetry streaming. It enables real-time metrics collection from a **Kali Linux Agent VM (192.168.2.2)** to a **Windows Host Listener Server (0.0.0.0)** and displays interactive metrics in a modern Web dashboard.
 
 ---
 
@@ -10,7 +10,7 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
 ```
 +------------------------------------+                    +---------------------------------------+
 |        Kali Linux VM               |                    |             Windows Host              |
-|        (192.168.2.2)               |                    |             (192.168.2.1)             |
+|        (192.168.2.2)               |                    |             (0.0.0.0)             |
 |                                    |                    |                                       |
 |  [Collectors: CPU, RAM, Disk, Net] |                    |  [TCP Listener Server (Port 5003)]    |
 |                 |                  |                    |                  |                    |

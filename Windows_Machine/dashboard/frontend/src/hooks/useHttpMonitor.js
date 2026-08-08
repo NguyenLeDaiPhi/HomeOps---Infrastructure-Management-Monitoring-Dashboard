@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { authFetch } from '../auth/api';
 
-const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || 'http://localhost:8500/api/v1/docker';
+const ORIGIN = `${window.location.protocol}//${window.location.host}`;
+const DOCKER_API = import.meta.env.VITE_DOCKER_API_URL || `${ORIGIN}/api/v1/docker`;
 const HTTP_API_BASE = DOCKER_API.replace('/api/v1/docker', '/api/v1/http');
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export function useHttpMonitor() {
   const [requests, setRequests] = useState([]);
