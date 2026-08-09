@@ -1,6 +1,6 @@
 # HomeOps - Infrastructure Management & Monitoring Dashboard
 
-An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Virtual Machine (192.168.2.2)** and a **Windows Host Machine (0.0.0.0)** over host-only networking.
+An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Agent** and a **Windows Host Machine**. The project follows 12-Factor App configuration principles: all environment-specific configuration is provided through environment variables and `.env` files.
 
 ---
 
@@ -41,7 +41,7 @@ HomeOps/
 
 ### 1. Run Windows Telemetry Service (Windows Machine)
 ```powershell
-cd d:\Management-Infra\HomeOps---Infrastructure-Management-Monitoring-Dashboard\Windows_Machine
+cd d:\Monitor-System\HomeOps---Infrastructure-Management-Monitoring-Dashboard\Windows_Machine
 python agent/listener.py
 ```
 *Listens for Kali TCP metrics on port `5003` and starts WebSocket server on port `8000`.*
@@ -60,6 +60,21 @@ npm install
 npm run dev
 ```
 Open browser at `http://localhost:5173`.
+
+---
+
+## Configuration
+
+1. Copy the example env file and update values for your environment:
+
+```bash
+cp .env.example .env
+# edit .env and set HOMEOPS_API_KEY, JWT_SECRET, DATABASE_URL, KALI_COMMAND_URL, etc.
+```
+
+2. When running with Docker Compose, the Windows `docker-compose.yml` will load `Windows_Machine/.env` automatically for the monitoring server. Do not commit your local `.env` files: `.gitignore` excludes them and keeps `.env.example` tracked.
+
+3. For the frontend, use Vite environment variables (prefix `VITE_`) or rely on `window.location.hostname` in production builds. Example variables: `VITE_API_URL`, `VITE_WS_URL`, `VITE_KALI_TARGET`.
 
 ---
 

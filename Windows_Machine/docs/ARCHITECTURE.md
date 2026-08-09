@@ -1,7 +1,7 @@
 # HomeOps Telemetry & Monitoring System Architecture
 
 ## Overview
-HomeOps is an enterprise-grade infrastructure monitoring solution designed for host-only Virtual Machine telemetry streaming. It enables real-time metrics collection from a **Kali Linux Agent VM (192.168.2.2)** to a **Windows Host Listener Server (0.0.0.0)** and displays interactive metrics in a modern Web dashboard.
+HomeOps is an infrastructure monitoring solution designed to be network-agnostic and deployable using environment-driven configuration. Telemetry is collected by a **Kali Linux Agent** and streamed to a **Windows Host Listener Server**, then visualized in a React dashboard.
 
 ---
 
@@ -10,7 +10,6 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
 ```
 +------------------------------------+                    +---------------------------------------+
 |        Kali Linux VM               |                    |             Windows Host              |
-|        (192.168.2.2)               |                    |             (0.0.0.0)             |
 |                                    |                    |                                       |
 |  [Collectors: CPU, RAM, Disk, Net] |                    |  [TCP Listener Server (Port 5003)]    |
 |                 |                  |                    |                  |                    |
@@ -23,7 +22,7 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
                                                                              v
                                                           +---------------------------------------+
                                                           |           React Live Dashboard        |
-                                                          |         (http://localhost:5173)       |
+                                                          |         (development: http://localhost:5173)
                                                           +---------------------------------------+
 ```
 
@@ -32,14 +31,14 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
 ## Framing & Communication Protocol
 - **Transport Layer**: TCP Sockets (`socket.AF_INET`, `socket.SOCK_STREAM`).
 - **Framing**: Each JSON telemetry payload is prefixed with a 4-byte big-endian unsigned integer header specifying message byte length (`struct.pack("!I", len(payload))`).
-- **Resilience**: The Kali sender features an infinite loop with auto-reconnection and exponential backoff retry. The Windows listener features socket context management and safe JSON exception handling.
+- **Resilience**: The Kali sender features auto-reconnection and backoff retries. The Windows listener features socket context management and safe JSON exception handling.
 
 ---
 
 ## Component Breakdown
 
 ### 1. Kali Linux Agent (`Kali_Machine/`)
-- **`config.py`**: Centralized configuration management.
+- **`config.py`**: Centralized configuration management using environment variables and `.env` files.
 - **`collector/`**:
   - `cpu.py`: Non-blocking CPU frequency, core counts, load averages.
   - `ram.py`: Virtual memory and Swap memory utilization.
@@ -49,14 +48,18 @@ HomeOps is an enterprise-grade infrastructure monitoring solution designed for h
 - **`monitor/`**:
   - `network_monitor.py`: Interface state change detection.
   - `process_monitor.py`: Fixed resource spike detection (`HIGH_CPU`, `HIGH_MEMORY`) and process lifecycle events (`PROCESS_STARTED`, `PROCESS_STOPPED`).
-- **`agent/sender.py`**: Main background agent connecting to Windows.
+- **`agent/sender.py`**: Main background agent connecting to the Windows listener.
 
 ### 2. Windows Listener & Web Server (`Windows_Machine/`)
-- **`config.py`**: Config for TCP IP/Port (`0.0.0.0:5003`) and WebSocket/HTTP Server (`0.0.0.0:8000`).
+- **`config.py`**: All runtime configuration is provided through environment variables and loaded with `python-dotenv` in development.
 - **`agent/listener.py`**: Multi-threaded service hosting:
   - **TCP Server**: Collects and ingests metric payloads from agents.
-  - **State Manager**: Thread-safe in-memory cache maintaining system state and 50-item rolling alert history.
+  - **State Manager**: Thread-safe in-memory cache maintaining system state and a rolling alert history.
   - **WebSocket / REST Server**: Streams state changes live to browser clients over WebSockets with HTTP GET `/api/state` fallback.
 
 ### 3. Frontend Dashboard (`Windows_Machine/dashboard/frontend/`)
-- **React + Vite**: Built with vanilla CSS glassmorphism, responsive grid layouts, custom hooks (`useWebSocket.js`), searchable process explorer, hardware gauges, and real-time security alert ticker.
+- **React + Vite**: Built with vanilla CSS glassmorphism, responsive grid layouts, custom hooks (`useWebSocket.js`), searchable process explorer, hardware gauges, and real-time security alert ticker. The frontend reads runtime endpoints from `import.meta.env` or `window.location.hostname`.
+
+Configuration notes:
+- Services and Docker containers should communicate using service names (for example, `monitoring-server`, `kali-agent`, `postgres`) rather than physical IP addresses.
+- Sensitive values (API keys, JWT secrets, database URLs) must be supplied as environment variables and not committed to source control. Example `.env.example` files are provided under each machine folder.
