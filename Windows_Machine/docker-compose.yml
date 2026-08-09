@@ -26,7 +26,7 @@ services:
     container_name: monitoring-server
     env_file:
       - .env
-      - ../Kali_Machine/.env
+      - ../Windows_Machine/.env
     ports:
       - "5003:5003" # TCP telemetry listener for Kali agent
     expose:

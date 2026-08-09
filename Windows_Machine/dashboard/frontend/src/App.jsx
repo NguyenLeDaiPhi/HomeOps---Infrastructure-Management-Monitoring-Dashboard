@@ -32,7 +32,7 @@ export function App() {
         <Route path="/infrastructure" element={<InfrastructurePage />} />
         <Route path="/docker" element={<ProtectedRoute allowedRoles={['admin', 'operator']}><DockerPage /></ProtectedRoute>} />
         <Route path="/network" element={<NetworkPage />} />
-        <Route path="/processes" element={<NetworkPage />} />
+        <Route path="/processes" element={<ProcessesPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/history" element={<HistoricalMetricsPage />} />
         <Route path="/http-monitor" element={<HttpMonitorPage />} />
