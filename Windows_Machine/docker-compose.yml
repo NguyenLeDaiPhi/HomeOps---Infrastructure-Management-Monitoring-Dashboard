@@ -17,21 +17,16 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      homeops:
-        ipv4_address: 172.20.0.30
+      - homeops
 
   monitoring-server:
     build:
       context: ./agent
       dockerfile: Dockerfile
     container_name: monitoring-server
-    environment:
-      DATABASE_URL: postgresql://homeops:homeops@homeops-postgres:5432/homeops
-      METRICS_RETENTION_DAYS: 30
-      HOST: 0.0.0.0
-      LISTENER_IP: 0.0.0.0
-      WEBSOCKET_HOST: 0.0.0.0
-      COMMAND_API_HOST: 0.0.0.0
+    env_file:
+      - .env
+      - ../Kali_Machine/.env
     ports:
       - "5003:5003" # TCP telemetry listener for Kali agent
     expose:
@@ -47,8 +42,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      homeops:
-        ipv4_address: 172.20.0.10
+      - homeops
 
   frontend:
     build:
@@ -62,8 +56,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      homeops:
-        ipv4_address: 172.20.0.20
+      - homeops
 
   nginx:
     image: nginx:stable-alpine
@@ -79,8 +72,7 @@ services:
         condition: service_started
     restart: unless-stopped
     networks:
-      homeops:
-        ipv4_address: 172.20.0.5
+      - homeops
 
 volumes:
   postgres_data:
@@ -88,6 +80,3 @@ volumes:
 networks:
   homeops:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24

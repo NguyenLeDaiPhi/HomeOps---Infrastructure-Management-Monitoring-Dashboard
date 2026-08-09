@@ -127,7 +127,7 @@ export function NetworkPage() {
               <div className="alert-time font-mono">13:40:12</div>
               <div className="alert-content">
                 <StatusBadge status="INFO" type="neutral" />
-                <span className="alert-text">Interface eth0 address assigned: 192.168.1.150</span>
+                <span className="alert-text">Interface eth0 address assigned: {interfaces[0]?.ip || window.location.hostname}</span>
               </div>
             </div>
             <div className="alert-item">

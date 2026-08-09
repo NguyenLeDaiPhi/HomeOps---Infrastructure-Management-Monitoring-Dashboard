@@ -15,7 +15,9 @@ export function SettingsPage() {
   const [dockerApiUrl, setDockerApiUrl] = useState(
     import.meta.env.VITE_DOCKER_API_URL || `${defaultOrigin}/api/v1/docker`
   );
-  const [kaliTarget, setKaliTarget] = useState('192.168.1.150');
+  const [kaliTarget, setKaliTarget] = useState(
+    import.meta.env.VITE_KALI_TARGET || window.location.hostname
+  );
   const [refreshInterval, setRefreshInterval] = useState(2000);
   const [cpuThreshold, setCpuThreshold] = useState(80);
   const [ramThreshold, setRamThreshold] = useState(85);
