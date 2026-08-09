@@ -182,7 +182,7 @@ def start_command_receiver_thread():
 # ---------------------------------------------------------------------------
 
 def run_agent():
-    logger.info(f"Starting Kali Telemetry Agent -> Target Windows Host {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}")
+    logger.info(f"Starting Kali Telemetry Agent -> Target Windows Host {KaliConfig.WINDOWS_HOST}:{KaliConfig.PORT}")
 
     # Start the command receiver API in a background thread
     cmd_thread = start_command_receiver_thread()
@@ -192,8 +192,8 @@ def run_agent():
         sock.settimeout(10.0)
 
         try:
-            logger.info(f"Attempting TCP connection to {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}...")
-            sock.connect((KaliConfig.WINDOWS_IP, KaliConfig.PORT))
+            logger.info(f"Attempting TCP connection to {KaliConfig.WINDOWS_HOST}:{KaliConfig.PORT}...")
+            sock.connect((KaliConfig.WINDOWS_HOST, KaliConfig.PORT))
             sock.settimeout(None) # Reset to blocking mode once connected
             logger.info("Successfully connected to Windows monitoring host!")
 
@@ -255,7 +255,7 @@ def run_agent():
                 hb_thread.join(timeout=1.0)
 
         except (ConnectionRefusedError, socket.timeout):
-            logger.warning(f"Connection refused by target {KaliConfig.WINDOWS_IP}:{KaliConfig.PORT}. Retrying in {KaliConfig.RECONNECT_DELAY}s...")
+            logger.warning(f"Connection refused by target {KaliConfig.WINDOWS_HOST}:{KaliConfig.PORT}. Retrying in {KaliConfig.RECONNECT_DELAY}s...")
         except (BrokenPipeError, ConnectionResetError):
             logger.warning("Connection lost to Windows host. Reconnecting...")
         except KeyboardInterrupt:
