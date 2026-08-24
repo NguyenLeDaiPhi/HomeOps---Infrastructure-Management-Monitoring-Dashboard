@@ -15,8 +15,8 @@ Quick start (local dev)
    - Windows dev `.env` sample: `Windows_Machine/.env.example`
 
    Example (recommended local values):
-   - Windows host IP: 192.168.1.218
-   - Kali host IP: 192.168.1.10
+   - Windows host IP: your local ip
+   - Kali host IP: your local ip
 
 2. From `Windows_Machine/` run (requires Docker):
 
