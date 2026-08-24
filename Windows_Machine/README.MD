@@ -1,85 +1,42 @@
-# HomeOps - Infrastructure Management & Monitoring Dashboard
+# Windows Monitoring Platform
 
-An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Agent** and a **Windows Host Machine**. The project follows 12-Factor App configuration principles: all environment-specific configuration is provided through environment variables and `.env` files.
+## Overview
 
----
+The Windows side is a Python service plus React dashboard deployment. `agent/windows_listen/listener.py` initializes the database, starts retention and heartbeat workers, then runs the TCP telemetry listener, raw HTTP/WebSocket bridge, and FastAPI command gateway in daemon threads.
 
-## Key Features
+## Runtime Architecture
 
-- ⚡ **Real-Time Web Dashboard**: High-tech glassmorphism UI with live hardware gauges (CPU, RAM, Disk), network interface status cards, searchable active process manager, and real-time security event feed.
-- 🔁 **Auto-Reconnecting Agent**: Kali Linux telemetry agent auto-reconnects with backoff retries when connection is interrupted.
-- 🔒 **Safe TCP Framing & Resilience**: 4-byte big-endian binary length header framing to prevent TCP message chunk fragmentation; safe JSON parsing keeps server running during corrupt packets.
-- 🌐 **Dual Protocol Bridge**: Windows listener provides both real-time WebSocket broadcasting (`ws://localhost:8000`) and REST API fallback (`http://localhost:8000/api/state`).
-- 🛠️ **Production Best Practices**: Modular Python package structure, `logging` system, thread-safe in-memory state manager, type hints, and centralized configuration.
+| Service | Bind/port | Role |
+|---|---|---|
+| TCP listener | `LISTENER_IP:PORT`, default `0.0.0.0:5003` | Receives Kali framed telemetry. |
+| Web bridge | `WEBSOCKET_HOST:WEBSOCKET_PORT`, default `0.0.0.0:8000` | Manual WebSocket `/ws` and state `/api/state`. |
+| FastAPI gateway | `COMMAND_API_HOST:COMMAND_API_PORT`, default `0.0.0.0:8500` | Auth, history, monitoring, and Docker proxy APIs. |
+| PostgreSQL | `postgres:5432` | Persistent storage; not published to host. |
+| Nginx | host `80` | Browser entry point and reverse proxy. |
 
----
+Compose services are `postgres`, `monitoring-server`, `frontend`, and `nginx`; container names are `homeops-postgres`, `monitoring-server`, `homeops-frontend`, and `homeops-nginx`.
 
-## Directory Structure
+## Backend and Data
 
-```
-HomeOps/
-├── Kali_Machine/              # Kali Linux VM Agent
-│   ├── config.py              # Configuration (Windows IP, Port, Thresholds)
-│   ├── agent/
-│   │   └── sender.py          # Telemetry client agent
-│   ├── collector/             # Hardware & system collectors (CPU, RAM, Disk, Net, Proc)
-│   └── monitor/               # Delta change monitors (Process & Network)
-│
-└── Windows_Machine/           # Windows Host Server & Dashboard
-    ├── config.py              # Windows listener configuration
-    ├── agent/
-    │   └── listener.py        # Multi-threaded TCP Listener & WebSocket Bridge
-    ├── dashboard/
-    │   └── frontend/          # React + Vite Glassmorphism Live Dashboard
-    └── docs/
-        └── ARCHITECTURE.md    # System Architecture Document
-```
+Telemetry updates locked in-memory state, broadcasts WebSocket snapshots, and queues selected writes through a five-worker executor. A one-second worker marks hosts offline after 30 seconds. Retention runs every 24 hours and defaults to 30 days for hardware, Docker, connection events, and HTTP logs. Schema initialization uses SQLAlchemy `create_all()`; no migration scripts were found.
 
----
+Nginx sends `/auth/` and `/api/` to `monitoring-server:8500`, `/ws` and exact `/api/state` to `monitoring-server:8000`, and other paths to `frontend:80`. The gateway forwards Docker commands over HTTP to `KALI_COMMAND_URL`.
 
-## Quick Start Guide
+## Frontend
 
-### 1. Run Windows Telemetry Service (Windows Machine)
+Vite builds the React SPA. Routes are `/login`, `/dashboard`, `/infrastructure`, `/docker`, `/network`, `/processes`, `/events`, `/history`, `/http-monitor`, `/settings`, and `/users`. Docker requires `admin` or `operator`; settings and users require `admin`. The main WebSocket hook supplies a token, while `useHttpMonitor` and `useHostStatus` create tokenless sockets and rely on polling when rejected.
+
+## Deployment
+
+From this directory, create `.env` from the supplied examples and run:
+
 ```powershell
-cd d:\Monitor-System\HomeOps---Infrastructure-Management-Monitoring-Dashboard\Windows_Machine
-python agent/listener.py
-```
-*Listens for Kali TCP metrics on port `5003` and starts WebSocket server on port `8000`.*
-
-### 2. Run Kali Telemetry Agent (Kali Linux VM)
-```bash
-cd Kali_Machine
-python3 agent/sender.py
-```
-*Connects to `0.0.0.0:5003` and starts transmitting telemetry.*
-
-### 3. Launch React Dashboard (Windows Machine)
-```powershell
-cd Windows_Machine/dashboard/frontend
-npm install
-npm run dev
-```
-Open browser at `http://localhost:5173`.
-
----
-
-## Configuration
-
-1. Copy the example env file and update values for your environment:
-
-```bash
-cp .env.example .env
-# edit .env and set HOMEOPS_API_KEY, JWT_SECRET, DATABASE_URL, KALI_COMMAND_URL, etc.
+docker compose up --build
+docker compose ps
 ```
 
-2. When running with Docker Compose, the Windows `docker-compose.yml` will load `Windows_Machine/.env` automatically for the monitoring server. Do not commit your local `.env` files: `.gitignore` excludes them and keeps `.env.example` tracked.
+PostgreSQL health gates monitoring-server startup; frontend and Nginx only wait for service start. The monitoring health check probes only TCP `5003`. No Windows service definition, TLS configuration, or host firewall configuration is present. See [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md) and [../docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).
 
-3. For the frontend, use Vite environment variables (prefix `VITE_`) or rely on `window.location.hostname` in production builds. Example variables: `VITE_API_URL`, `VITE_WS_URL`, `VITE_KALI_TARGET`.
+## Security Limitations
 
----
-
-## Future Roadmap
-
-1. **Persistent Time-Series Database**: Integrate SQLite or TimescaleDB to record 24-hour metric history and interactive graphs.
-2. **TLS Encryption**: Add SSL/TLS certificates over TCP socket framing for secure cross-network deployment.
-3. **Multi-Host Agent Monitoring**: Add unique host identifiers and token authentication to monitor multiple Linux VMs simultaneously.
+JWT access/refresh tokens, bcrypt, RBAC, rate limiting, and audit records are implemented. Current risks include seeded `admin` / `admin123`, wildcard CORS with credentials, plaintext transport, localStorage tokens, query-string WebSocket tokens, unauthenticated telemetry TCP, and the broken gateway API-key fallback (`WindowsConfig.API_KEY` does not exist).

@@ -1,85 +1,59 @@
-# HomeOps - Infrastructure Management & Monitoring Dashboard
+# HomeOps
+## Infrastructure Management & Monitoring Platform
 
-An infrastructure monitoring platform designed for real-time telemetry streaming between a **Kali Linux Agent** and a **Windows Host Machine**. The project follows 12-Factor App configuration principles: all environment-specific configuration is provided through environment variables and `.env` files.
+HomeOps is a two-host monitoring and Docker-control application. A Kali-side Python agent collects host telemetry and exposes a command receiver. A Windows-side Python service accepts telemetry, stores selected records in PostgreSQL, exposes REST and WebSocket interfaces, and serves a React dashboard through Nginx.
 
----
+This documentation follows the implementation currently present in the repository. Security and deployment limitations are part of the current status.
 
-## Key Features
+## Architecture
 
-- ⚡ **Real-Time Web Dashboard**: High-tech glassmorphism UI with live hardware gauges (CPU, RAM, Disk), network interface status cards, searchable active process manager, and real-time security event feed.
-- 🔁 **Auto-Reconnecting Agent**: Kali Linux telemetry agent auto-reconnects with backoff retries when connection is interrupted.
-- 🔒 **Safe TCP Framing & Resilience**: 4-byte big-endian binary length header framing to prevent TCP message chunk fragmentation; safe JSON parsing keeps server running during corrupt packets.
-- 🌐 **Dual Protocol Bridge**: Windows listener provides both real-time WebSocket broadcasting (`ws://localhost:8000`) and REST API fallback (`http://localhost:8000/api/state`).
-- 🛠️ **Production Best Practices**: Modular Python package structure, `logging` system, thread-safe in-memory state manager, type hints, and centralized configuration.
-
----
-
-## Directory Structure
-
-```
-HomeOps/
-├── Kali_Machine/              # Kali Linux VM Agent
-│   ├── config.py              # Configuration (Windows IP, Port, Thresholds)
-│   ├── agent/
-│   │   └── sender.py          # Telemetry client agent
-│   ├── collector/             # Hardware & system collectors (CPU, RAM, Disk, Net, Proc)
-│   └── monitor/               # Delta change monitors (Process & Network)
-│
-└── Windows_Machine/           # Windows Host Server & Dashboard
-    ├── config.py              # Windows listener configuration
-    ├── agent/
-    │   └── listener.py        # Multi-threaded TCP Listener & WebSocket Bridge
-    ├── dashboard/
-    │   └── frontend/          # React + Vite Glassmorphism Live Dashboard
-    └── docs/
-        └── ARCHITECTURE.md    # System Architecture Document
+```mermaid
+flowchart LR
+ B[Browser] -->|HTTP/WebSocket :80| N[homeops-nginx]
+ N -->|SPA| F[homeops-frontend :80]
+ N -->|REST /auth /api| G[monitoring-server :8500]
+ N -->|/ws and /api/state| W[monitoring-server :8000]
+ K[Kali agent] -->|framed JSON TCP :5003| T[monitoring-server]
+ G -->|HTTP commands| K
+ G -->|SQLAlchemy| P[(PostgreSQL :5432)]
 ```
 
----
+Compose defines `postgres`, `monitoring-server`, `frontend`, and `nginx` on the `homeops` bridge network. Kali is external to Compose and connects to the Windows host using `WINDOWS_HOST`.
 
-## Quick Start Guide
+## Implemented Surface
 
-### 1. Run Windows Telemetry Service (Windows Machine)
-```powershell
-cd d:\Monitor-System\HomeOps---Infrastructure-Management-Monitoring-Dashboard\Windows_Machine
-python agent/listener.py
-```
-*Listens for Kali TCP metrics on port `5003` and starts WebSocket server on port `8000`.*
+- Length-prefixed TCP telemetry for hardware, network, process, Docker, event, and heartbeat messages.
+- In-memory current state, WebSocket broadcasts, and 30-second heartbeat offline detection.
+- PostgreSQL persistence for hosts, metrics, events, HTTP request logs, heartbeats, users, refresh tokens, and audit logs.
+- HS256 JWT access/refresh authentication, bcrypt password hashes, and `admin`, `operator`, and `viewer` roles.
+- REST history, host status, HTTP monitoring, Docker state, and Docker control APIs.
+- React/Vite routes for dashboard, infrastructure, Docker, network, processes, events, history, HTTP monitoring, settings, and users.
 
-### 2. Run Kali Telemetry Agent (Kali Linux VM)
-```bash
-cd Kali_Machine
-python3 agent/sender.py
-```
-*Connects to `0.0.0.0:5003` and starts transmitting telemetry.*
+## Data Flow
 
-### 3. Launch React Dashboard (Windows Machine)
-```powershell
-cd Windows_Machine/dashboard/frontend
-npm install
-npm run dev
-```
-Open browser at `http://localhost:5173`.
+Kali sends UTF-8 JSON over TCP using a 4-byte big-endian length prefix. The Windows listener updates state, broadcasts a snapshot, and queues selected database writes. Browser REST calls go through Nginx to port `8500`; `/ws` and `/api/state` go to port `8000`. Docker commands are forwarded from the gateway to the Kali command receiver at `KALI_COMMAND_URL`.
 
----
+## Repository
 
-## Configuration
-
-1. Copy the example env file and update values for your environment:
-
-```bash
-cp .env.example .env
-# edit .env and set HOMEOPS_API_KEY, JWT_SECRET, DATABASE_URL, KALI_COMMAND_URL, etc.
+```text
+Kali_Machine/       Telemetry sender, collectors, monitors, command receiver
+Windows_Machine/    Listener, FastAPI gateway, auth, database, frontend, Compose
+docs/               Architecture, networking, security, API, deployment, protocol
+diagrams/           Repository diagrams
 ```
 
-2. When running with Docker Compose, the Windows `docker-compose.yml` will load `Windows_Machine/.env` automatically for the monitoring server. Do not commit your local `.env` files: `.gitignore` excludes them and keeps `.env.example` tracked.
+## Configuration and Running
 
-3. For the frontend, use Vite environment variables (prefix `VITE_`) or rely on `window.location.hostname` in production builds. Example variables: `VITE_API_URL`, `VITE_WS_URL`, `VITE_KALI_TARGET`.
+Copy the relevant `.env.example` to `.env` and provide secrets and host values. Windows requires `HOMEOPS_API_KEY`, `JWT_SECRET`, `DATABASE_URL`, and `KALI_COMMAND_URL`. Kali requires `HOMEOPS_API_KEY`, `JWT_SECRET`, and `WINDOWS_HOST`. Never commit real values. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
----
+From `Windows_Machine`, run `docker compose up --build`; Nginx publishes host port `80` and the telemetry listener publishes host port `5003`. For local development, install Python requirements in each machine directory and use `npm install`, `npm run dev`, `npm run build`, or `npm run lint` in the frontend directory.
 
-## Future Roadmap
+## Security and Status
 
-1. **Persistent Time-Series Database**: Integrate SQLite or TimescaleDB to record 24-hour metric history and interactive graphs.
-2. **TLS Encryption**: Add SSL/TLS certificates over TCP socket framing for secure cross-network deployment.
-3. **Multi-Host Agent Monitoring**: Add unique host identifiers and token authentication to monitor multiple Linux VMs simultaneously.
+JWT/RBAC and password hashing are implemented, but telemetry TCP has no authentication or encryption; TLS is not configured; CORS allows all origins with credentials; browser tokens use `localStorage`; and startup seeds `admin` / `admin123` when absent. The gateway API-key fallback references nonexistent `WindowsConfig.API_KEY`. Two secondary frontend WebSocket hooks omit tokens and therefore rely on polling. No migration scripts were found. The current deployment is not verified as production-ready.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/TELEMETRY_PROTOCOL.md](docs/TELEMETRY_PROTOCOL.md), and [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+## License
+
+No license file or license declaration was found. Licensing is not verified.
